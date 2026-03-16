@@ -4,300 +4,326 @@
 
 ## APIs & External Services
 
-### WhatsApp via WAHA (WhatsApp HTTP API)
+### AI / LLM — OpenRouter
 
-**Purpose:** Send and receive WhatsApp messages for automated customer communication.
+**Purpose:** All AI features (WhatsApp agent, BI chat, onboarding assistant, style analysis)
 
-- SDK/Client: Custom `WahaClient` class in `src/lib/waha/waha-client.ts`
-- Provider abstraction: `WhatsAppProvider` interface in `src/lib/waha/provider.ts`
-- Current implementation: `WahaProvider` class (implements `WhatsAppProvider`)
-- Auth: API key via `WAHA_API_KEY` env var, passed as `X-Api-Key` header
-- Base URL: `WAHA_API_URL` env var
-- Singleton instance: `waha` exported from `src/lib/waha/waha-client.ts`
-- Provider singleton: `whatsapp` exported from `src/lib/waha/provider.ts`
+**SDK/Client:** Raw `fetch()` to OpenRouter REST API (OpenAI-compatible format)
 
-**Capabilities:**
-- Session management (create, get, list sessions): `WahaClient.createSession()`, `WahaClient.getSession()`, `WahaClient.getSessions()`
-- QR code retrieval for phone linking: `WahaClient.getQR()`
-- Send text messages: `WahaClient.sendText()`
-- Send image messages: `WahaClient.sendImage()`
+**Auth:** `OPENROUTER_API_KEY` env var, sent as `Authorization: Bearer <key>`
 
-**WAHA API Endpoints Used:**
-- `POST /api/sessions` - Create session with webhook config
-- `GET /api/sessions/{name}` - Get session status
-- `GET /api/sessions` - List all sessions
-- `GET /api/{session}/auth/qr` - Get QR code for authentication
-- `POST /api/sendText` - Send text message
-- `POST /api/sendImage` - Send image message
+**Implementation:** `src/lib/ai/ai-client.ts`
 
-**Types:** Defined in `src/lib/waha/types.ts`:
-- `WahaSession` (name, status, config)
-- `WahaMessage` (id, from, to, body, fromMe, type, session)
-- `WebhookPayload` (event, session, payload)
-- `WahaQR` (value, mimetype)
-- `WahaSendResult` (id, status)
+**Endpoints used:**
+- `POST https://openrouter.ai/api/v1/chat/completions` - Text generation
+- Same endpoint with `image_url` content blocks for vision
 
-**Architecture Note:** The `WhatsAppProvider` interface in `src/lib/waha/provider.ts` is designed for future provider swapping (comment: "Future: CloudApiProvider implements WhatsAppProvider"), enabling migration from WAHA to WhatsApp Cloud API.
+**Models configured:**
+- Text: `AI_MODEL` env var, default `google/gemini-2.5-flash-preview`
+- Vision: `AI_VISION_MODEL` env var, default `google/gemini-2.5-flash-preview`
 
-### OpenRouter AI API
-
-**Purpose:** AI-powered customer conversation agent and business intelligence chat.
-
-- Endpoint: `https://openrouter.ai/api/v1/chat/completions` (OpenAI-compatible)
-- Client: Custom functions in `src/lib/ai/gemini.ts` (file named "gemini" for historical reasons; uses OpenRouter)
-- Auth: Bearer token via `OPENROUTER_API_KEY` env var
-- Default model: `google/gemini-2.5-flash-preview` (configurable via `AI_MODEL` env var)
-- Vision model: `google/gemini-2.5-flash-preview` (configurable via `AI_VISION_MODEL` env var)
-
-**Functions:**
-- `generateResponse()` in `src/lib/ai/gemini.ts` - Text chat completion with system prompt and conversation history
-- `generateVisionResponse()` in `src/lib/ai/gemini.ts` - Multimodal completion with base64 images
-
-**Request Headers:**
-- `Authorization: Bearer {OPENROUTER_API_KEY}`
-- `HTTP-Referer: {NEXT_PUBLIC_APP_URL}` (fallback: `https://auto-crm.org`)
+**Request headers:**
+- `Authorization: Bearer <OPENROUTER_API_KEY>`
+- `HTTP-Referer: <NEXT_PUBLIC_APP_URL>` (fallback: `https://auto-crm.org`)
 - `X-Title: WhatsApp AI Agent Platform`
 
-**AI Features:**
+**AI features built on this integration:**
+- **WhatsApp AI Agent** (`src/lib/ai/agent-prompt.ts`): Processes incoming WhatsApp messages, detects intents (book/cancel/reschedule/price/faq/lead/human/sensitive/greeting/other), generates Hebrew responses, returns structured JSON with action commands
+- **BI Chat** (`src/lib/ai/bi-chat.ts`): Business intelligence Q&A; generates query plans, fetches data from Supabase, synthesizes Hebrew answers
+- **Onboarding Chat** (`src/app/api/ai/onboarding-chat/route.ts`): Conversational onboarding wizard that collects business configuration via AI dialogue
+- **Style Analyzer** (`src/lib/ai/style-analyzer.ts`): Analyzes WhatsApp screenshot images to extract communication style patterns using vision model
 
-1. **WhatsApp Agent** (`src/lib/ai/agent-prompt.ts`):
-   - Entry point: `processAIAgent(input: AgentInput): Promise<AgentResponse>`
-   - Loads business context (business, settings, persona, conversation history) from Supabase
-   - Builds Hebrew system prompt with business details, services, hours, persona style
-   - Sends to OpenRouter, parses structured JSON response
-   - Executes actions (book_appointment, cancel_appointment, escalate)
-   - Returns intent classification with confidence score
+**API routes:**
+- `POST /api/ai/chat` - BI chat endpoint (`src/app/api/ai/chat/route.ts`)
+- `POST /api/ai/agent` - Manual AI agent trigger (`src/app/api/ai/agent/route.ts`)
+- `POST /api/ai/onboarding-chat` - Onboarding AI chat (`src/app/api/ai/onboarding-chat/route.ts`)
 
-2. **BI Chat** (`src/lib/ai/bi-chat.ts`):
-   - Entry point: `processBusinessQuery(businessId, question): Promise<BIChatResult>`
-   - Two-step AI pipeline: (1) generate query plan identifying relevant tables, (2) fetch data and generate Hebrew answer
-   - Saves chat history to `ai_chat_history` table
-   - Schema-aware: knows 7 database tables and their columns
+---
 
-3. **Style Analyzer** (`src/lib/ai/style-analyzer.ts`):
-   - Entry point: `analyzeStyleFromScreenshots(images): Promise<StyleAnalysis>`
-   - Uses vision model to analyze WhatsApp screenshot images
-   - Extracts communication style attributes (formality, emoji usage, phrasing patterns)
-   - Used during onboarding to configure AI persona
+### WhatsApp — WAHA (WhatsApp HTTP API)
+
+**Purpose:** Send and receive WhatsApp messages, manage WhatsApp sessions, QR code authentication
+
+**SDK/Client:** Custom `WahaClient` class in `src/lib/waha/waha-client.ts` using raw `fetch()`
+
+**Auth:** `WAHA_API_KEY` env var, sent as `X-Api-Key` header
+
+**Provider abstraction:** `src/lib/waha/provider.ts` defines `WhatsAppProvider` interface with `WahaProvider` implementation. Designed for future swap to WhatsApp Cloud API (`// Future: CloudApiProvider implements WhatsAppProvider`).
+
+**Singleton instance:** `src/lib/waha/provider.ts` exports `whatsapp` singleton
+
+**WAHA endpoints consumed:**
+- `POST /api/sessions` - Create new WhatsApp session
+- `GET /api/sessions/<name>` - Get session status
+- `GET /api/sessions` - List all sessions
+- `GET /api/<session>/auth/qr` - Get QR code for authentication
+- `POST /api/sendText` - Send text message
+- `POST /api/sendImage` - Send image message
+- `POST /api/sessions/<name>/stop` - Stop session
+- `POST /api/sessions/<name>/start` - Start session
+
+**Types:** `src/lib/waha/types.ts` defines `WahaSession`, `WahaMessage`, `WebhookPayload`, `WahaQR`, `WahaSendResult`
+
+**API routes:**
+- `POST /api/waha/connect` - Create/restart WAHA session for a business (`src/app/api/waha/connect/route.ts`)
+- `GET /api/waha/qr?session=<name>` - Get QR code for session auth (`src/app/api/waha/qr/route.ts`)
+
+**Environment variables:**
+- `WAHA_API_URL` - Base URL of the WAHA server
+- `WAHA_API_KEY` - API key for authentication
+
+---
 
 ### Telegram Bot API
 
-**Purpose:** Health check alerts for disconnected WhatsApp sessions.
+**Purpose:** Health check alerts for disconnected WhatsApp sessions
 
-- Used in: `src/app/api/cron/health-check/route.ts`
-- Endpoint: `https://api.telegram.org/bot{token}/sendMessage`
-- Auth: `TELEGRAM_BOT_TOKEN` env var
-- Chat target: `TELEGRAM_CHAT_ID` env var
-- Parse mode: HTML
-- **Optional integration** - gracefully skips if env vars not configured
+**SDK/Client:** Raw `fetch()` to Telegram Bot API
 
-**Alert Types:**
-- WAHA server unreachable
-- Phone number disconnected
-- Phone number reconnected (recovery notice)
+**Implementation:** `src/app/api/cron/health-check/route.ts` (inline `sendTelegramAlert` function)
+
+**Endpoint used:**
+- `POST https://api.telegram.org/bot<token>/sendMessage`
+
+**Environment variables:**
+- `TELEGRAM_BOT_TOKEN` - Telegram bot token (optional; alerts skipped if not set)
+- `TELEGRAM_CHAT_ID` - Target chat ID for alerts
+
+**Alert types:**
+- Disconnected phone numbers
+- WAHA server connection failures
+- Phone number recovery notices
+
+---
 
 ## Data Storage
 
-### Supabase (PostgreSQL)
+### Database — Supabase (PostgreSQL)
 
-**Role:** Primary database, authentication, file storage, and realtime subscriptions.
+**Provider:** Supabase (hosted PostgreSQL with PostgREST, Auth, Realtime, Storage)
 
-**Connection:**
-- URL: `NEXT_PUBLIC_SUPABASE_URL` env var
-- Anon key: `NEXT_PUBLIC_SUPABASE_ANON_KEY` env var (client + server with RLS)
-- Service key: `SUPABASE_SERVICE_ROLE_KEY` env var (admin operations, bypasses RLS)
+**Connection env vars:**
+- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Public anonymous key (respects RLS)
+- `SUPABASE_SERVICE_ROLE_KEY` - Service role key (bypasses RLS; server-only)
 
-**Client Initialization (4 patterns):**
+**Client implementations (4 variants):**
 
-1. **Browser client** - `src/lib/supabase/client.ts`
-   - `createBrowserClient()` from `@supabase/ssr`
-   - Used in React hooks and client components
-   - Singleton pattern in `src/hooks/use-auth.ts`
+| Client | File | Context | Auth |
+|--------|------|---------|------|
+| Browser | `src/lib/supabase/client.ts` | Client components | `createBrowserClient()` from `@supabase/ssr` |
+| Server | `src/lib/supabase/server.ts` | Server components, API routes, server actions | `createServerClient()` from `@supabase/ssr` with cookie handling |
+| Service | `src/lib/supabase/service.ts` | Webhooks, cron jobs, admin operations | `createClient()` from `@supabase/supabase-js` with service role key (bypasses RLS) |
+| Middleware | `src/lib/supabase/middleware.ts` | Next.js middleware for auth session refresh | `createServerClient()` with request/response cookie propagation |
 
-2. **Server client (with cookies)** - `src/lib/supabase/server.ts`
-   - `createServerClient()` from `@supabase/ssr`
-   - Uses Next.js `cookies()` for session management
-   - Used in server components, server actions, and API routes that need user context
-
-3. **Service client (admin)** - `src/lib/supabase/service.ts`
-   - `createClient()` from `@supabase/supabase-js` with service role key
-   - Bypasses Row-Level Security (RLS)
-   - Used in webhook handlers, registration flow, cron jobs, and AI agent
-
-4. **Middleware client** - `src/lib/supabase/middleware.ts`
-   - `createServerClient()` from `@supabase/ssr`
-   - Manages auth session refresh on every request
-   - Called from `src/middleware.ts`
-
-**Database Tables (identified from code usage):**
+**Database tables (inferred from queries):**
 
 | Table | Purpose | Key Files |
 |-------|---------|-----------|
-| `businesses` | Business accounts | `src/lib/auth/register.ts`, `src/lib/ai/agent-prompt.ts` |
-| `business_users` | User-to-business mapping (roles: owner) | `src/lib/auth/register.ts`, `src/hooks/use-auth.ts` |
-| `business_settings` | Working hours, services, cancellation policy, AI config | `src/lib/data/settings-mutations.ts`, `src/lib/ai/agent-prompt.ts` |
-| `business_templates` | Business type templates for onboarding | `src/lib/auth/register.ts` |
-| `ai_personas` | AI agent personality (tone, emoji, prompt, examples) | `src/lib/ai/agent-prompt.ts`, `src/lib/data/settings-mutations.ts` |
-| `contacts` | Customer records (phone, status, tags, visit stats) | `src/lib/data/contacts.ts`, `src/lib/data/contacts-mutations.ts` |
-| `conversations` | Chat threads (status, bot toggle, assignment) | `src/lib/data/messages.ts`, `src/app/api/webhooks/waha/route.ts` |
-| `messages` | Individual messages (direction, sender type, content) | `src/lib/data/messages.ts`, `src/app/api/webhooks/waha/route.ts` |
-| `appointments` | Scheduled appointments (service, time, price, status) | `src/lib/data/appointments.ts`, `src/lib/data/appointments-mutations.ts` |
+| `businesses` | Business profiles (name, type, plan, status, owner) | `src/lib/auth/register.ts`, `src/lib/auth/save-onboarding.ts` |
+| `business_users` | User-business membership (user_id, business_id, role) | `src/lib/supabase/middleware.ts`, `src/hooks/use-auth.ts` |
+| `business_settings` | Services, working hours, cancellation policy, AI config (JSONB columns) | `src/lib/data/settings-mutations.ts`, `src/lib/data/appointments.ts` |
+| `business_templates` | Pre-configured templates by business type | `src/lib/auth/register.ts` |
+| `ai_personas` | AI tone, emoji usage, style examples, system prompt, boundaries | `src/lib/ai/agent-prompt.ts`, `src/lib/auth/onboarding-actions.ts` |
+| `onboarding_progress` | Wizard step tracking (current_step, steps_data, is_completed) | `src/lib/data/onboarding.ts`, `src/lib/auth/save-onboarding.ts` |
+| `contacts` | CRM contacts (wa_id, phone, name, status, tags, visits, revenue) | `src/lib/data/contacts.ts`, `src/lib/data/contacts-mutations.ts` |
+| `conversations` | Chat threads (contact_id, status, is_bot_active, assigned_to) | `src/lib/data/messages.ts`, `src/hooks/use-realtime.ts` |
+| `messages` | Individual messages (direction, sender_type, content, status, provider_message_id) | `src/lib/data/messages.ts`, `src/app/api/webhooks/waha/route.ts` |
+| `appointments` | Scheduled appointments (service_type, start/end time, status, price) | `src/lib/data/appointments.ts`, `src/lib/data/appointments-mutations.ts` |
 | `expenses` | One-time business expenses | `src/lib/data/expenses.ts` |
-| `recurring_expenses` | Recurring expense entries | `src/lib/data/expenses.ts` |
-| `phone_numbers` | WhatsApp phone sessions (WAHA session mapping) | `src/app/api/webhooks/waha/route.ts`, `src/app/api/waha/connect/route.ts` |
-| `ai_conversation_logs` | AI response logs (intent, confidence, escalation) | `src/app/api/webhooks/waha/route.ts`, `src/lib/ai/bi-chat.ts` |
-| `ai_chat_history` | BI chat Q&A history | `src/lib/ai/bi-chat.ts` |
-| `kpi_snapshots` | Periodic business metrics snapshots | `src/lib/ai/bi-chat.ts` |
-| `onboarding_progress` | Multi-step onboarding wizard state | `src/lib/data/onboarding.ts`, `src/lib/auth/register.ts` |
-| `billing_accounts` | Billing and plan information | `src/lib/auth/register.ts` |
-| `waitlist` | Appointment waitlist for cancelled slot offers | `src/lib/data/appointments-mutations.ts` |
+| `recurring_expenses` | Recurring expense definitions (frequency, is_active) | `src/lib/data/expenses.ts` |
+| `phone_numbers` | WhatsApp phone registrations (session_id, status, provider, server_node) | `src/app/api/webhooks/waha/route.ts`, `src/app/api/cron/health-check/route.ts` |
+| `ai_conversation_logs` | AI response logging (intent, confidence, escalated) | `src/app/api/webhooks/waha/route.ts`, `src/lib/ai/bi-chat.ts` |
+| `ai_chat_history` | BI chat Q&A history (question, answer, query_generated) | `src/lib/ai/bi-chat.ts` |
+| `kpi_snapshots` | Business KPI snapshots (period, metrics JSONB) | `src/lib/ai/bi-chat.ts` |
+| `billing_accounts` | Billing/subscription info (plan, monthly_price, status) | `src/lib/auth/register.ts` |
+| `platform_payments` | Platform payment records (amount, status) | `src/app/admin/page.tsx` |
+| `waitlist` | Appointment waitlist (preferred_date, status: waiting/offered) | `src/lib/data/appointments-mutations.ts` |
 
-**Supabase RPC Functions:**
-- `increment_contact_visits(p_contact_id, p_revenue)` - Atomic contact stats update, called from `src/lib/data/appointments-mutations.ts`
+**Supabase RPC functions:**
+- `increment_contact_visits(p_contact_id, p_revenue)` - Atomic contact stats update on appointment creation (`src/lib/data/appointments-mutations.ts`)
 
-**File Storage:**
-- Bucket: `receipts` - Expense receipt image uploads
-- Used in: `src/lib/data/expenses.ts` (`addExpense()`)
-- Files stored at path: `{businessId}/{timestamp}_{filename}`
-- Public URLs generated via `supabase.storage.from('receipts').getPublicUrl()`
+**Realtime subscriptions:**
+- Messages by `conversation_id` (INSERT + UPDATE) - `src/hooks/use-realtime.ts`
+- Appointments by `business_id` (INSERT + UPDATE + DELETE) - `src/hooks/use-realtime.ts`
+- Conversations by `business_id` (* all events, triggers refetch) - `src/hooks/use-realtime.ts`
 
-**Realtime Subscriptions:**
-- Implemented in `src/hooks/use-realtime.ts`
-- `useRealtimeMessages(conversationId)` - Subscribes to `postgres_changes` on `messages` table (INSERT + UPDATE)
-- `useRealtimeAppointments(businessId)` - Subscribes to `postgres_changes` on `appointments` table (INSERT + UPDATE + DELETE)
-- `useRealtimeConversations(businessId)` - Subscribes to `postgres_changes` on `conversations` table (all events, refetches with joins)
+### File Storage — Supabase Storage
+
+**Purpose:** Receipt image uploads for expenses
+
+**Bucket:** `receipts`
+
+**Implementation:** `src/lib/data/expenses.ts` (`addExpense` function)
+
+**Pattern:** Upload file to `receipts/<businessId>/<timestamp>_<filename>`, retrieve public URL via `getPublicUrl()`
+
+### Caching
+
+Not detected - No caching layer (Redis, Memcached, etc.)
+
+---
 
 ## Authentication & Identity
 
 **Auth Provider:** Supabase Auth
 
-- Implementation: Email/password signup and login
-- Registration flow: `src/lib/auth/register.ts` (`registerBusiness()` server action)
-- Session management: Cookie-based via `@supabase/ssr`
-- Middleware: `src/middleware.ts` -> `src/lib/supabase/middleware.ts`
-  - Refreshes auth session on every request
-  - Redirects unauthenticated users to `/login`
-  - Exempts: `/login`, `/register`, `/api/webhooks/*`
-- Client auth hook: `src/hooks/use-auth.ts` (`useAuth()`)
-  - Provides `user`, `businessId`, `loading` state
-  - Subscribes to `onAuthStateChange` for session changes
+**Implementation:** Cookie-based SSR auth via `@supabase/ssr`
 
-**Authorization Pattern:**
-- Row-Level Security (RLS) on Supabase tables scopes data to the user's business
-- API routes manually verify auth via `supabase.auth.getUser()` and resolve business via `business_users` table
-- Webhook routes use service client (no auth context) - explicitly exempted from middleware redirect
-- Cron routes protected by `CRON_SECRET` bearer token
+**Auth flows:**
+- **Registration:** Email/password signup via `supabase.auth.signUp()` in `src/lib/auth/register.ts` (server action)
+- **Login:** Standard Supabase email/password (handled by login page at `src/app/(auth)/login/page.tsx`)
+- **Session refresh:** Next.js middleware at `src/middleware.ts` refreshes auth cookies on every request via `src/lib/supabase/middleware.ts`
 
-**User Metadata:**
-- `full_name` and `phone` stored in Supabase Auth user metadata during signup
+**Authorization model:**
+- **Business isolation:** All data queries scoped by `business_id` via Supabase RLS + application-level filtering through `business_users` table join
+- **Admin access:** Hardcoded email allowlist in `src/app/admin/layout.tsx` (`ALLOWED_ADMIN_EMAILS` array)
+- **Onboarding gate:** Middleware redirects users without completed onboarding to `/onboarding` (checked via `onboarding_progress.is_completed`)
+- **Webhook auth:** WAHA webhook verifies `X-Api-Key` header matches `WAHA_API_KEY` env var
+- **Cron auth:** Health-check endpoint verifies `Authorization: Bearer <CRON_SECRET>`
+
+**User metadata stored at signup:**
+- `full_name` (from registration form)
+- `phone` (from registration form)
+
+**Client-side auth hook:** `src/hooks/use-auth.ts` - Provides `user`, `businessId`, `loading` state; subscribes to `onAuthStateChange`
+
+---
 
 ## Monitoring & Observability
 
-**Error Tracking:** None detected (no Sentry, Datadog, etc.)
+**Error Tracking:**
+- None detected (no Sentry, Datadog, etc.)
 
 **Logs:**
-- `console.log` / `console.error` / `console.warn` throughout
-- Prefixed log patterns: `[webhook]`, `[health-check]`, `[AI]`, `[AI Vision]`, `[Reminder]`, `[Waitlist]`, `[Contact Stats]`, `[Receipt Upload]`, `[api/ai/agent]`, `[api/ai/chat]`, `[api/messages]`, `[api/waha/connect]`, `[api/waha/qr]`
+- `console.log`, `console.error`, `console.warn` throughout codebase
+- Log prefix convention: `[module]` (e.g., `[webhook]`, `[health-check]`, `[agent]`, `[Reminder]`, `[ENV]`)
 
 **Health Monitoring:**
-- Cron health check endpoint: `GET /api/cron/health-check` (`src/app/api/cron/health-check/route.ts`)
-- Compares WAHA session states against database records
-- Detects orphaned WAHA sessions
-- Sends Telegram alerts on status changes
-- Protected by `CRON_SECRET` bearer token
+- Cron endpoint at `GET /api/cron/health-check` (`src/app/api/cron/health-check/route.ts`)
+- Compares WAHA sessions against `phone_numbers` table
+- Detects: disconnected phones, orphaned WAHA sessions, WAHA server failures
+- Alerts via Telegram Bot API (optional)
+
+---
 
 ## CI/CD & Deployment
 
-**Hosting:** Vercel (implied by Next.js App Router, Vercel Cron references in comments)
+**Hosting:**
+- Designed for Vercel (Next.js 16 App Router, server actions, middleware)
+- No `vercel.json` or deployment config detected
 
-**CI Pipeline:** Not detected (no `.github/workflows/`, no `vercel.json` found)
+**CI Pipeline:**
+- Not detected (no `.github/workflows`, no CI config files)
 
-**Build Commands:**
-```bash
-npm run dev    # Development server
-npm run build  # Production build
-npm run start  # Start production server
-npm run lint   # ESLint
-```
+---
 
 ## Environment Configuration
 
 **Required env vars:**
-- `NEXT_PUBLIC_SUPABASE_URL` - Supabase project URL (public)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` - Supabase anon key (public)
-- `SUPABASE_SERVICE_ROLE_KEY` - Supabase admin key (server-only, secret)
-- `OPENROUTER_API_KEY` - OpenRouter API key (server-only, secret)
-- `WAHA_API_URL` - WAHA server base URL (server-only)
-- `WAHA_API_KEY` - WAHA API key (server-only, secret)
-- `NEXT_PUBLIC_APP_URL` - Public URL of the app (used for webhook callback URLs)
+| Variable | Purpose | Client/Server |
+|----------|---------|---------------|
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL | Both |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase public key | Both |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (bypasses RLS) | Server only |
+| `OPENROUTER_API_KEY` | OpenRouter AI API key | Server only |
+| `WAHA_API_URL` | WAHA server base URL | Server only |
+| `WAHA_API_KEY` | WAHA API authentication key | Server only |
 
 **Optional env vars:**
-- `AI_MODEL` - Override AI model (default: `google/gemini-2.5-flash-preview`)
-- `AI_VISION_MODEL` - Override vision model (default: `google/gemini-2.5-flash-preview`)
-- `CRON_SECRET` - Bearer token for cron endpoint protection
-- `TELEGRAM_BOT_TOKEN` - Telegram bot for health alerts
-- `TELEGRAM_CHAT_ID` - Telegram chat for health alerts
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `NEXT_PUBLIC_APP_URL` | Public URL for webhooks | `https://auto-crm.org` |
+| `AI_MODEL` | OpenRouter model for text | `google/gemini-2.5-flash-preview` |
+| `AI_VISION_MODEL` | OpenRouter model for vision | `google/gemini-2.5-flash-preview` |
+| `CRON_SECRET` | Bearer token for cron endpoint | None (endpoint returns 500 if missing) |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot for alerts | None (alerts skipped) |
+| `TELEGRAM_CHAT_ID` | Telegram chat for alerts | None (alerts skipped) |
 
 **Secrets location:**
-- `.env.local` file (present, gitignored)
-- All server-only secrets accessed via `process.env` at runtime
+- `.env.local` file (present, not committed)
+
+---
 
 ## Webhooks & Callbacks
 
-**Incoming Webhooks:**
+### Incoming Webhooks
 
-1. **WAHA Message Webhook** - `POST /api/webhooks/waha` (`src/app/api/webhooks/waha/route.ts`)
-   - Receives WhatsApp message events from WAHA server
-   - Events handled:
-     - `message` - Incoming customer message -> auto-creates contact/conversation, saves message, triggers AI agent
-     - `session.status` - Session state changes -> updates `phone_numbers` status
-     - `message.ack` - Delivery/read receipts -> updates message status (sent/delivered/read)
-   - Uses service client (no auth) - exempted from middleware auth redirect
-   - Webhook URL configured during session creation: `{NEXT_PUBLIC_APP_URL}/api/webhooks/waha`
+**WAHA WhatsApp Webhook:**
+- Endpoint: `POST /api/webhooks/waha` (`src/app/api/webhooks/waha/route.ts`)
+- Auth: `X-Api-Key` header must match `WAHA_API_KEY`
+- Events handled:
+  - `message` - Incoming WhatsApp message processing:
+    1. Lookup business by WAHA session
+    2. Find/create contact
+    3. Find/create conversation
+    4. Save message to DB
+    5. Run AI agent if bot is active
+    6. Send AI response via WAHA
+    7. Log AI interaction
+  - `session.status` - Updates `phone_numbers.status` (connected/disconnected)
+  - `message.ack` - Updates message delivery status (sent/delivered/read)
+- Skips: outgoing messages (`fromMe`), group messages (hyphen in ID), empty messages
 
-**Outgoing Webhooks:** None
+**Health-Check Cron:**
+- Endpoint: `GET /api/cron/health-check` (`src/app/api/cron/health-check/route.ts`)
+- Auth: `Authorization: Bearer <CRON_SECRET>`
+- Meant to be called by Vercel Cron or external cron service
 
-**Cron Endpoints:**
+### Outgoing Webhooks
 
-1. **Health Check** - `GET /api/cron/health-check` (`src/app/api/cron/health-check/route.ts`)
-   - Polls WAHA for session statuses
-   - Updates DB records
-   - Sends Telegram alerts for disconnections/reconnections
-   - Protected by `CRON_SECRET` bearer token
+**WAHA Session Webhooks:**
+- Configured when creating WAHA sessions in `src/lib/waha/provider.ts` and `src/app/api/waha/connect/route.ts`
+- Webhook URL: `<NEXT_PUBLIC_APP_URL>/api/webhooks/waha`
+- Subscribed events: `message`, `message.ack`, `session.status`
 
-2. **Reminders** - `src/app/api/cron/reminders/` (directory exists but empty; not yet implemented)
+---
 
-## Internal API Routes
+## Integration Architecture Summary
 
-| Method | Path | Purpose | File |
-|--------|------|---------|------|
-| POST | `/api/ai/agent` | Manual AI agent trigger | `src/app/api/ai/agent/route.ts` |
-| POST | `/api/ai/chat` | BI chat query | `src/app/api/ai/chat/route.ts` |
-| GET | `/api/appointments` | List appointments by date range | `src/app/api/appointments/route.ts` |
-| POST | `/api/appointments` | Create appointment | `src/app/api/appointments/route.ts` |
-| GET | `/api/contacts` | Search/list contacts with pagination | `src/app/api/contacts/route.ts` |
-| POST | `/api/contacts` | Create contact | `src/app/api/contacts/route.ts` |
-| POST | `/api/messages` | Send manual WhatsApp message | `src/app/api/messages/route.ts` |
-| POST | `/api/waha/connect` | Create WAHA session for business | `src/app/api/waha/connect/route.ts` |
-| GET | `/api/waha/qr` | Get QR code for session auth | `src/app/api/waha/qr/route.ts` |
-| POST | `/api/webhooks/waha` | WAHA webhook receiver | `src/app/api/webhooks/waha/route.ts` |
-| GET | `/api/cron/health-check` | WAHA session health check | `src/app/api/cron/health-check/route.ts` |
+```
+                    +------------------+
+                    |   Mobile PWA     |
+                    |  (Next.js SSR)   |
+                    +--------+---------+
+                             |
+                    +--------+---------+
+                    |  Supabase Auth   |
+                    |  (Cookie-based)  |
+                    +--------+---------+
+                             |
+              +--------------+-------------+
+              |                            |
+     +--------+--------+        +---------+--------+
+     | Next.js API      |        | Supabase         |
+     | Route Handlers   |        | (PostgreSQL +    |
+     |                  |        |  Realtime +      |
+     | /api/webhooks/   |        |  Storage)        |
+     | /api/ai/         |        +------------------+
+     | /api/waha/       |
+     | /api/cron/       |
+     | /api/messages/   |
+     | /api/contacts/   |
+     | /api/appointments|
+     +-------+--+-------+
+             |  |
+    +--------+  +----------+
+    |                      |
++---+--------+    +--------+-------+
+| OpenRouter |    |  WAHA Server   |
+| (AI/LLM)  |    |  (WhatsApp)    |
++------------+    +--------+-------+
+                           |
+                  +--------+-------+
+                  | WhatsApp Users |
+                  | (Customers)    |
+                  +----------------+
 
-## Planned/Stubbed Integrations
-
-**BullMQ Job Queue:**
-- Referenced in TODO comments in `src/lib/data/appointments-mutations.ts`
-- Directory exists: `src/lib/queue/` (empty)
-- Intended for: Appointment reminder scheduling (1 hour before start)
-- Currently: Reminders are logged but not actually sent
-
-**WhatsApp Cloud API:**
-- Comment in `src/lib/waha/provider.ts`: "Future: CloudApiProvider implements WhatsAppProvider"
-- The `WhatsAppProvider` interface is designed for provider swapping
-
-**Waitlist Notifications:**
-- Logic exists in `src/lib/data/appointments-mutations.ts` (`cancelAppointment()`)
-- Waitlist query works, but WhatsApp notification is commented out (TODO)
+                  +----------------+
+                  | Telegram Bot   |
+                  | (Health Alerts)|
+                  +----------------+
+```
 
 ---
 

@@ -5,214 +5,264 @@
 ## Test Framework
 
 **Runner:**
-- **None installed.** No test framework (Jest, Vitest, Playwright, etc.) is configured.
-- No test runner config files exist (`jest.config.*`, `vitest.config.*`, `cypress.config.*`, `playwright.config.*`).
-- No test-related dependencies in `package.json`.
-- No test scripts in `package.json` (only `dev`, `build`, `start`, `lint`).
+- Not configured. No test framework (Jest, Vitest, Playwright, Cypress) is installed or configured.
+- No test runner config files detected (`jest.config.*`, `vitest.config.*`, `playwright.config.*`, `cypress.config.*`).
+- No test-related scripts in `package.json`.
+- No test-related devDependencies in `package.json`.
 
 **Assertion Library:**
-- None
+- None installed.
 
 **Run Commands:**
 ```bash
-npm run lint               # Only available quality check (ESLint)
-npm run build              # Type checking via TypeScript (strict mode)
+# No test commands available
+# npm run lint              # Only linting exists (ESLint)
 ```
 
 ## Test File Organization
 
 **Location:**
 - No test files exist anywhere in `src/`.
-- No `__tests__/` directories, no `*.test.ts`, no `*.spec.ts` files.
+- No `__tests__/` directories.
+- No `*.test.ts`, `*.test.tsx`, `*.spec.ts`, or `*.spec.tsx` files in the project source.
 
-**Naming:**
-- No convention established yet.
-
-## Test Coverage
-
-**Requirements:** None enforced. No coverage tooling configured.
-
-**Current coverage:** 0% -- no tests exist.
+**Current state:** Zero test coverage. The codebase has no automated tests of any kind.
 
 ## Recommended Test Setup
 
-Based on the codebase patterns (Next.js 16, React 19, TypeScript, Supabase), the recommended test stack would be:
+Based on the stack (Next.js 16, React 19, TypeScript), the following setup would be appropriate:
 
-**Unit/Integration:**
-- Vitest (fast, native ESM/TypeScript, works well with Next.js)
-- `@testing-library/react` for component testing
-- `@testing-library/jest-dom` for DOM assertions
+**Unit/Integration Tests:**
+- Framework: Vitest (fast, native TypeScript/ESM support, compatible with Next.js)
+- Config file: `vitest.config.ts` at project root
+- React component testing: `@testing-library/react` with `@testing-library/jest-dom`
 
-**E2E:**
-- Playwright (official Next.js recommendation)
-
-**Suggested `package.json` additions:**
+**Recommended `package.json` scripts:**
 ```json
 {
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
-  },
-  "devDependencies": {
-    "vitest": "^3.x",
-    "@vitejs/plugin-react": "^4.x",
-    "@testing-library/react": "^16.x",
-    "@testing-library/jest-dom": "^6.x",
-    "jsdom": "^26.x"
   }
 }
 ```
 
-## What Should Be Tested (Priority Order)
-
-### High Priority -- Pure Logic (no mocking needed)
-
-These modules contain pure business logic that is trivial to unit test:
-
-**Time utilities** in `src/lib/data/appointments.ts`:
-```typescript
-// parseTime("14:30") should return 870
-// formatTime(870) should return "14:30"
-export function parseTime(time: string): number
-export function formatTime(minutes: number): string
+**Recommended devDependencies:**
+```json
+{
+  "vitest": "^3.x",
+  "@testing-library/react": "^16.x",
+  "@testing-library/jest-dom": "^6.x",
+  "@testing-library/user-event": "^14.x",
+  "@vitejs/plugin-react": "^4.x",
+  "jsdom": "^25.x"
+}
 ```
 
-**Zod validation schemas** in `src/lib/validations.ts`:
-```typescript
-// Test valid/invalid inputs for each schema
-registerSchema.parse({ ... })    // should succeed
-registerSchema.parse({ phone: '123' })  // should throw
+## Test File Naming Convention (Recommended)
+
+Based on the file naming conventions in the codebase (kebab-case), use:
+
+**Pattern:** Co-located test files with `.test.ts` / `.test.tsx` suffix
+
+```
+src/
+  lib/
+    data/
+      contacts.ts
+      contacts.test.ts           # Unit tests for query functions
+      contacts-mutations.ts
+      contacts-mutations.test.ts # Unit tests for mutation functions
+    ai/
+      ai-client.ts
+      ai-client.test.ts
+    waha/
+      waha-client.ts
+      waha-client.test.ts
+  components/
+    ui/
+      status-badge.tsx
+      status-badge.test.tsx
+    contacts/
+      contact-form.tsx
+      contact-form.test.tsx
+  hooks/
+    use-auth.ts
+    use-auth.test.ts
+  app/
+    api/
+      contacts/
+        route.ts
+        route.test.ts
 ```
 
-**Contact status logic** in `src/lib/data/contacts-mutations.ts`:
+## What to Test (Priority Order)
+
+### P0 -- Critical Business Logic
+
+**AI Agent Processing (`src/lib/ai/agent-prompt.ts`):**
+- `buildSystemPrompt()` -- pure function, easy to unit test
+- `processAIAgent()` -- mock Supabase and AI client, test flow
+- JSON parsing fallback when AI returns invalid JSON
+- Action execution: `book_appointment`, `cancel_appointment`, `escalate`
+- Time slot conflict detection
+
+**Webhook Handler (`src/app/api/webhooks/waha/route.ts`):**
+- Message event: contact creation, conversation creation, message saving
+- Session status event: status mapping (WORKING -> connected)
+- Message ack event: status updates
+- Auth verification (API key check)
+- Edge cases: outgoing messages skipped, group messages skipped, empty messages skipped
+
+**Data Mutations:**
+- `createAppointment()` in `src/lib/data/appointments-mutations.ts`
+- `cancelAppointment()` with waitlist logic
+- `createContact()` in `src/lib/data/contacts-mutations.ts`
+- `updateContactStatus()` status computation logic
+
+### P1 -- Data Layer Queries
+
+**Appointment Slot Calculation (`src/lib/data/appointments.ts`):**
+- `getAvailableSlots()` -- complex logic with break intervals, overlap detection
+- `parseTime()` and `formatTime()` -- pure helper functions, trivial to test
+
+**Contact Queries (`src/lib/data/contacts.ts`):**
+- `getContacts()` with search, filter, sort, pagination
+- `getDormantContacts()` with date threshold calculation
+
+### P2 -- API Routes
+
+**All API routes follow the same pattern and should test:**
+- Auth guard (401 if no user)
+- Business resolution (404 if no business)
+- Input validation (400 for missing fields)
+- Success response shape
+- Error handling (500 catch-all)
+
+**Files to cover:**
+- `src/app/api/contacts/route.ts` (GET, POST)
+- `src/app/api/appointments/route.ts` (GET, POST)
+- `src/app/api/messages/route.ts` (POST)
+- `src/app/api/ai/chat/route.ts` (POST)
+- `src/app/api/ai/agent/route.ts` (POST)
+- `src/app/api/cron/health-check/route.ts` (GET)
+
+### P3 -- UI Components
+
+**Components with logic worth testing:**
+- `src/components/contacts/contact-form.tsx` -- form validation, submission
+- `src/components/inbox/inbox-shell.tsx` -- mobile/desktop layout switching
+- `src/components/ui/error-boundary.tsx` -- error catching behavior
+- `src/components/ui/toast.tsx` -- toast context, auto-dismiss
+
+**Pure display components (low priority):**
+- `src/components/ui/status-badge.tsx`
+- `src/components/ui/avatar-initials.tsx` -- `getInitials()` and `getVariant()` are pure testable functions
+- `src/components/dashboard/stat-card.tsx`
+
+## Mocking Strategy (Recommended)
+
+**Supabase Client Mocking:**
+The Supabase client is created via factory functions in three files. Mock the module:
+
 ```typescript
-// updateContactStatus determines status from visit count + recency
-// 10+ visits => 'vip', 2+ => 'returning', etc.
-```
-
-**AI response parsing** in `src/lib/ai/agent-prompt.ts`:
-```typescript
-// JSON parsing with markdown fence stripping
-// Fallback when AI returns invalid JSON
-const cleaned = rawResponse.replace(/```json\n?|```/g, '').trim()
-```
-
-**Dashboard helpers** in `src/lib/data/dashboard.ts`:
-```typescript
-// getStartOfWeek(), getStartOfMonth() -- date utilities
-```
-
-**cn() utility** in `src/lib/utils/cn.ts`:
-```typescript
-// cn('foo', false && 'bar', 'baz') => 'foo baz'
-```
-
-### Medium Priority -- Data Layer (requires Supabase mocking)
-
-**Data query functions** in `src/lib/data/`:
-- `src/lib/data/contacts.ts` -- `getContacts()`, `getContactById()`, `getDormantContacts()`
-- `src/lib/data/messages.ts` -- `getConversations()`, `getConversationMessages()`
-- `src/lib/data/appointments.ts` -- `getAppointmentsByDate()`, `getAvailableSlots()`
-- `src/lib/data/dashboard.ts` -- `getDashboardData()`
-- `src/lib/data/expenses.ts` -- `getMonthlyFinancials()`, `addExpense()`
-
-**Mocking pattern for Supabase:**
-```typescript
-import { vi } from 'vitest'
-
-// Mock the server client
+// Example: mocking server-side Supabase
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn().mockResolvedValue({
-    from: vi.fn().mockReturnThis(),
-    select: vi.fn().mockReturnThis(),
-    eq: vi.fn().mockReturnThis(),
-    single: vi.fn().mockResolvedValue({ data: mockData, error: null }),
     auth: {
       getUser: vi.fn().mockResolvedValue({
         data: { user: { id: 'test-user-id' } },
         error: null,
       }),
     },
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      update: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: mockData, error: null }),
+    }),
   }),
 }))
 ```
 
-### Medium Priority -- API Routes (requires request/response mocking)
-
-**API route handlers** in `src/app/api/`:
-- `src/app/api/contacts/route.ts` -- GET (search, filter, paginate), POST (create)
-- `src/app/api/appointments/route.ts` -- GET (date range), POST (create)
-- `src/app/api/messages/route.ts` -- POST (send message)
-- `src/app/api/ai/agent/route.ts` -- POST (trigger AI agent)
-- `src/app/api/ai/chat/route.ts` -- POST (BI query)
-- `src/app/api/webhooks/waha/route.ts` -- POST (incoming WhatsApp messages)
-
-**Testing pattern for route handlers:**
+**Service Client (`src/lib/supabase/service.ts`):**
 ```typescript
-import { POST } from '@/app/api/contacts/route'
-import { NextRequest } from 'next/server'
-
-it('returns 401 when not authenticated', async () => {
-  const req = new NextRequest('http://localhost/api/contacts', {
-    method: 'POST',
-    body: JSON.stringify({ name: 'Test', phone: '0501234567' }),
-  })
-  const res = await POST(req)
-  expect(res.status).toBe(401)
-})
+vi.mock('@/lib/supabase/service', () => ({
+  createServiceClient: vi.fn().mockReturnValue({
+    from: vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      // ... chainable mocks
+    }),
+  }),
+}))
 ```
 
-### Lower Priority -- Components (requires DOM testing)
+**AI Client (`src/lib/ai/ai-client.ts`):**
+```typescript
+vi.mock('@/lib/ai/ai-client', () => ({
+  generateResponse: vi.fn().mockResolvedValue('{"text":"response","intent":"greeting","confidence":0.9,"action":null,"escalated":false}'),
+  generateVisionResponse: vi.fn().mockResolvedValue('{"message_length":"short","emoji_usage":"light"}'),
+}))
+```
 
-**Complex client components:**
-- `src/components/inbox/inbox-shell.tsx` -- split-view layout, mobile/desktop toggle
-- `src/components/inbox/chat-view.tsx` -- realtime messages, bot toggle, send
-- `src/components/contacts/contacts-list.tsx` -- search, filter, paginate, CRUD
-- `src/components/calendar/calendar-view.tsx` -- date navigation, appointment display
+**WAHA Client (`src/lib/waha/waha-client.ts`):**
+```typescript
+vi.mock('@/lib/waha/waha-client', () => ({
+  waha: {
+    sendText: vi.fn().mockResolvedValue({ id: 'msg-1', status: 'sent' }),
+    sendImage: vi.fn().mockResolvedValue({ id: 'msg-2', status: 'sent' }),
+    getSession: vi.fn().mockResolvedValue({ name: 'test', status: 'WORKING' }),
+    getSessions: vi.fn().mockResolvedValue([]),
+    createSession: vi.fn().mockResolvedValue({ name: 'new-session' }),
+    getQR: vi.fn().mockResolvedValue({ value: 'qr-data', mimetype: 'image/png' }),
+  },
+}))
+```
 
-### Lower Priority -- Integration/E2E
-
-**Critical user flows:**
-- Registration flow: register -> onboarding -> dashboard
-- Login flow: login -> redirect to dashboard
-- WhatsApp webhook: incoming message -> AI response -> outgoing message
-- Appointment booking: select date -> check availability -> create appointment
-
-## Mocking
-
-**Framework:** Not yet configured. Vitest built-in `vi.mock()` recommended.
+**WhatsApp Provider (`src/lib/waha/provider.ts`):**
+```typescript
+vi.mock('@/lib/waha/provider', () => ({
+  whatsapp: {
+    sendMessage: vi.fn().mockResolvedValue(undefined),
+    sendImage: vi.fn().mockResolvedValue(undefined),
+    getSessionStatus: vi.fn().mockResolvedValue('WORKING'),
+    createSession: vi.fn().mockResolvedValue('new-session'),
+    getQR: vi.fn().mockResolvedValue('qr-data'),
+  },
+}))
+```
 
 **What to Mock:**
-- `@/lib/supabase/server` -- mock `createClient()` to return chainable query builder
-- `@/lib/supabase/client` -- mock for component tests
-- `@/lib/supabase/service` -- mock `createServiceClient()` for webhook/cron tests
-- `@/lib/waha/waha-client` -- mock `waha` singleton for WhatsApp API calls
-- `@/lib/waha/provider` -- mock `whatsapp` singleton
-- `@/lib/ai/gemini` -- mock `generateResponse()` and `generateVisionResponse()`
-- `fetch` -- mock for OpenRouter API calls, Telegram alerts, WAHA API
+- All Supabase client calls (network boundary)
+- All AI API calls (OpenRouter -- external service)
+- All WAHA API calls (external service)
+- `fetch()` global for API route integration tests
+- `next/headers` (`cookies()`) for server client tests
+- Environment variables via `vi.stubEnv()`
 
 **What NOT to Mock:**
-- Zod schemas (test real validation behavior)
-- Pure utility functions (`cn()`, `parseTime()`, `formatTime()`, `lighten()`)
-- Type definitions and interfaces
-- Component rendering logic (use Testing Library instead)
+- Pure functions: `parseTime()`, `formatTime()`, `getInitials()`, `getVariant()`, `lighten()`, `cn()`
+- Zod schemas and validation logic
+- `buildSystemPrompt()` (pure function that formats strings)
+- Data transformation logic (e.g., mapping Supabase rows to typed objects)
 
-## Fixtures and Factories
+## Fixtures and Factories (Recommended)
 
-**Test Data:**
-No fixtures or factories exist yet. Create them in a `src/__tests__/fixtures/` directory.
+**Test Data Location:** `src/__tests__/fixtures/` or co-located `__fixtures__/` directories
 
+**Example fixture pattern:**
 ```typescript
-// Suggested: src/__tests__/fixtures/contacts.ts
+// src/__tests__/fixtures/contacts.ts
 export const mockContact = {
   id: 'contact-1',
   business_id: 'biz-1',
   wa_id: '0501234567',
   phone: '0501234567',
-  name: 'Test Contact',
+  name: 'ישראל ישראלי',
   status: 'new',
-  tags: [],
+  tags: ['VIP'],
   notes: null,
   birthday: null,
   last_visit: null,
@@ -221,58 +271,96 @@ export const mockContact = {
   created_at: '2026-01-01T00:00:00Z',
 }
 
-// Suggested: src/__tests__/fixtures/conversations.ts
-export const mockConversation = {
-  id: 'conv-1',
-  business_id: 'biz-1',
-  contact_id: 'contact-1',
+export const mockBusiness = {
+  id: 'biz-1',
+  name: 'מספרה של שרה',
+  owner_user_id: 'user-1',
+  business_type: 'salon',
+  plan: 'trial',
   status: 'active',
-  assigned_to: null,
-  is_bot_active: true,
-  last_message_at: '2026-01-01T12:00:00Z',
-  created_at: '2026-01-01T00:00:00Z',
-  contacts: { name: 'Test Contact', phone: '0501234567', status: 'new' },
-  lastMessage: null,
+}
+
+export const mockBusinessUser = {
+  business_id: 'biz-1',
+  user_id: 'user-1',
+  role: 'owner',
 }
 ```
 
-**Location:**
-- `src/__tests__/fixtures/` for shared test data
-- Co-locate test files next to source: `src/lib/data/contacts.test.ts`
-- Or use `__tests__/` directories: `src/lib/data/__tests__/contacts.test.ts`
+## Coverage
+
+**Requirements:** None enforced (no test infrastructure exists).
+
+**Recommended targets when testing is added:**
+- Overall: 60% as initial target
+- Critical paths (AI agent, webhooks, mutations): 80%+
+- Pure utility functions: 100%
 
 ## Test Types
 
 **Unit Tests:**
-- Target: pure functions, utilities, validation schemas, data transformations
-- No external dependencies or side effects
-- Fast execution, no mocking needed
+- Target: pure functions, data transformations, Zod schemas
+- Files: `src/lib/ai/agent-prompt.ts` (buildSystemPrompt), `src/lib/data/appointments.ts` (parseTime, formatTime, slot calculation), `src/lib/validations.ts`
 
 **Integration Tests:**
-- Target: data layer functions with mocked Supabase, API route handlers
-- Mock external services (Supabase, WAHA, OpenRouter)
-- Test request/response shape and error handling
+- Target: API route handlers, data layer functions with mocked Supabase
+- Verify request/response shapes, auth guards, error handling
 
 **E2E Tests:**
-- Framework: Not configured. Playwright recommended.
-- Target: full user flows (registration, login, inbox, calendar)
-- Would require Supabase local instance or test project
+- Not configured. No Playwright or Cypress.
+- Recommended: Playwright for critical user flows (login, contact creation, appointment booking)
 
-## Current Quality Checks
+## Pure Functions to Test Immediately
 
-The only automated quality checks available:
+These require zero mocking and provide high value:
 
-```bash
-npm run lint               # ESLint with Next.js + TypeScript rules
-npm run build              # TypeScript compilation (strict: true)
+| Function | File | Complexity |
+|----------|------|------------|
+| `parseTime(time: string)` | `src/lib/data/appointments.ts` | Low |
+| `formatTime(minutes: number)` | `src/lib/data/appointments.ts` | Low |
+| `getInitials(name: string)` | `src/components/ui/avatar-initials.tsx` | Low |
+| `getVariant(name: string)` | `src/components/ui/avatar-initials.tsx` | Low |
+| `lighten(hex: string, ratio: number)` | `src/hooks/use-theme.ts` | Low |
+| `cn(...inputs: ClassValue[])` | `src/lib/utils/cn.ts` | Trivial |
+| `buildSystemPrompt(business, settings, persona)` | `src/lib/ai/agent-prompt.ts` | Medium |
+| `formatWorkingHours(hours)` | `src/lib/ai/agent-prompt.ts` | Low |
+| Zod schema validation | `src/lib/validations.ts` | Low |
+| `getGreeting()` | `src/app/(dashboard)/page.tsx` | Trivial |
+| `formatCurrency(amount: number)` | `src/app/(dashboard)/page.tsx` | Trivial |
+
+## Vitest Config (Recommended Starter)
+
+```typescript
+// vitest.config.ts
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
+import { resolve } from 'path'
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: ['./src/__tests__/setup.ts'],
+    include: ['src/**/*.test.{ts,tsx}'],
+    coverage: {
+      reporter: ['text', 'html'],
+      include: ['src/lib/**', 'src/components/**', 'src/hooks/**', 'src/app/api/**'],
+      exclude: ['src/types/**'],
+    },
+  },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
+})
 ```
 
-**TypeScript strict mode** (`tsconfig.json`) catches:
-- Missing null checks
-- Implicit `any` usage
-- Unused variables (via ESLint)
-
-**No CI/CD pipeline detected** -- no `.github/workflows/`, no `vercel.json` with build checks.
+```typescript
+// src/__tests__/setup.ts
+import '@testing-library/jest-dom/vitest'
+```
 
 ---
 
