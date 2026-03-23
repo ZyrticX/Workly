@@ -181,11 +181,19 @@ export async function PATCH(request: NextRequest) {
             .single()
 
           if (phoneNum?.session_id) {
-            const chatId = contact.wa_id || contact.phone || ''
+            let chatId = contact.wa_id || contact.phone || ''
+            if (chatId && !chatId.includes('@')) {
+              if (/^\d{15,}$/.test(chatId)) chatId = chatId + '@lid'
+              else {
+                if (chatId.startsWith('05')) chatId = '972' + chatId.slice(1)
+                chatId = chatId + '@c.us'
+              }
+            }
+            const displayName = (contact.name && !contact.name.startsWith('לקוח ')) ? contact.name : ''
             await whatsapp.sendMessage(
               phoneNum.session_id,
               chatId,
-              `שלום ${contact.name || ''},\nהתור שלך ל${existing.service_type} *הועבר* לתאריך ${dateStr} בשעה ${timeStr}.\nנתראה! 😊`
+              `שלום${displayName ? ' ' + displayName : ''},\nהתור שלך ל${existing.service_type} *הועבר* לתאריך ${dateStr} בשעה ${timeStr}.\nנתראה! 😊`
             )
           }
         } catch (err) {
@@ -217,11 +225,13 @@ export async function DELETE(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     let id = searchParams.get('id')
 
-    // Also support body-based id
+    // Also support body-based id + cancellation reason
+    let cancellationReason = ''
     if (!id) {
       try {
         const body = await request.json()
         id = body.id
+        cancellationReason = body.reason || ''
       } catch {
         // No body provided
       }
@@ -243,10 +253,13 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'תור לא נמצא' }, { status: 404 })
     }
 
-    // Soft delete - set status to cancelled
+    // Soft delete - set status to cancelled with optional reason
+    const updateData: Record<string, unknown> = { status: 'cancelled' }
+    if (cancellationReason) updateData.notes = `[ביטול] ${cancellationReason}`
+
     const { data, error } = await supabase
       .from('appointments')
-      .update({ status: 'cancelled' })
+      .update(updateData)
       .eq('id', id)
       .eq('business_id', bu.business_id)
       .select()
@@ -276,15 +289,26 @@ export async function DELETE(request: NextRequest) {
           .single()
 
         if (phoneNum?.session_id) {
-          const chatId = contact.wa_id || contact.phone || ''
+          // Format chatId - LID needs @lid suffix, phone needs @c.us
+          let chatId = contact.wa_id || contact.phone || ''
+          if (chatId && !chatId.includes('@')) {
+            if (/^\d{15,}$/.test(chatId)) {
+              chatId = chatId + '@lid'
+            } else {
+              if (chatId.startsWith('05')) chatId = '972' + chatId.slice(1)
+              chatId = chatId + '@c.us'
+            }
+          }
+
           const date = new Date(existing.start_time)
           const dateStr = date.toLocaleDateString('he-IL')
-          const timeStr = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })
+          const timeStr = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 
+          const displayName = (contact.name && !contact.name.startsWith('לקוח ')) ? contact.name : ''
           await whatsapp.sendMessage(
             phoneNum.session_id,
             chatId,
-            `שלום ${contact.name || ''},\nהתור שלך ל${existing.service_type} בתאריך ${dateStr} בשעה ${timeStr} *בוטל*.\nאם תרצה/י לקבוע תור חדש, פשוט שלח/י לנו הודעה 😊`
+            `שלום${displayName ? ' ' + displayName : ''},\nהתור שלך ל${existing.service_type} בתאריך ${dateStr} בשעה ${timeStr} *בוטל*.\nאם תרצה/י לקבוע תור חדש, פשוט שלח/י לנו הודעה 😊`
           )
         }
       } catch (err) {

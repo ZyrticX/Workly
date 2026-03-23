@@ -474,6 +474,15 @@ async function executeAction(
             throw new Error('TIME_SLOT_CONFLICT_SWAP_SENT')
           }
 
+          // Update contact name if we learned it during conversation
+          const learnedName = params.contact_name as string | undefined
+          if (learnedName && learnedName.length > 1 && !/^\d+$/.test(learnedName) && !learnedName.startsWith('לקוח')) {
+            await supabase.from('contacts')
+              .update({ name: learnedName })
+              .eq('id', input.contactId)
+            console.log(`[agent] Updated contact ${input.contactId} name to: ${learnedName}`)
+          }
+
           await supabase.from('appointments').insert({
             business_id: input.businessId,
             contact_id: input.contactId,
@@ -484,7 +493,7 @@ async function executeAction(
             price: service.price,
             status: 'confirmed',
             notes: params.notes || null,
-            contact_name: params.contact_name || input.contactName || null,
+            contact_name: learnedName || input.contactName || null,
           })
 
           // Update contact name if provided and current name is just a number
