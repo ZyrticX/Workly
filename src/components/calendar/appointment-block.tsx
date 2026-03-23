@@ -31,7 +31,7 @@ export function AppointmentBlock({ appointment, variant, onRefresh }: Appointmen
   const colors = getServiceColor(appointment.service_type)
 
   const startDate = new Date(appointment.start_time)
-  const timeStr = startDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jerusalem' })
+  const timeStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
 
   const isCancelled = appointment.status === 'cancelled'
   const isCompleted = appointment.status === 'completed'

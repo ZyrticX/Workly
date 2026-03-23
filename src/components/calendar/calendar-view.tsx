@@ -173,7 +173,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
   function getAppointmentsForSlot(time: string): Appointment[] {
     return appointments.filter((a) => {
       const t = new Date(a.start_time)
-      const hhmm = t.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jerusalem' })
+      const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
       return hhmm === time
     })
   }
@@ -401,7 +401,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
                             <div className="space-y-0.5">
                               {dayAppointments.slice(0, 2).map((apt) => {
                                 const t = new Date(apt.start_time)
-                                const hhmm = t.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jerusalem' })
+                                const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
                                 return (
                                 <div
                                   key={apt.id}

@@ -82,7 +82,7 @@ async function getDashboardData() {
     },
     upcomingAppointments: todayAppointments.map((apt: any) => ({
       id: apt.id,
-      time: new Date(apt.start_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }),
+      time: (() => { const d = new Date(apt.start_time); return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; })(),
       contactName: apt.contacts?.name || 'לא ידוע',
       service: apt.service_type || '',
       status: apt.status as 'confirmed' | 'pending' | 'cancelled',
