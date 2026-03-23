@@ -172,6 +172,13 @@ export function processState(
       const [h, m] = time.split(':').map(Number)
       const totalMin = h * 60 + m
 
+      // Validate working hours (8:00 - 20:00)
+      if (h < 8 || h >= 20) {
+        availableSlots = getValidSlots(duration)
+        aiInstruction = `הלקוח ביקש שעה ${time} שהיא מחוץ לשעות העבודה (8:00-20:00). אמור לו בעדינות שאנחנו לא עובדים בשעה הזו, והצע שעות מתוך: ${availableSlots.slice(0, 5).join(', ')}`
+        return { newState: state, aiInstruction, action, availableSlots }
+      }
+
       // Round to valid slot
       const rounded = Math.round(totalMin / duration) * duration
       const rH = Math.floor(rounded / 60)

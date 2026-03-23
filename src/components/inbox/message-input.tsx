@@ -68,14 +68,24 @@ export function MessageInput({ conversationId, isBotActive, onMessageSent }: Mes
     [handleSend]
   )
 
-  // When bot is active, show an indicator instead of input
-  if (isBotActive) {
+  // When bot is active, show indicator BUT still allow manual sending
+  const [showManualInput, setShowManualInput] = useState(false)
+
+  if (isBotActive && !showManualInput) {
     return (
-      <div className="flex items-center justify-center gap-2 px-4 py-3 bg-blue-50/60 backdrop-blur-sm border-t border-blue-100/30">
-        <div className="h-2 w-2 rounded-full bg-[#3B7DD8] animate-pulse" />
-        <span className="text-sm text-[#3B7DD8] font-medium">
-          AI פעיל — הבוט עונה אוטומטית
-        </span>
+      <div className="flex flex-col glass-strong border-t-0">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 bg-blue-50/60 backdrop-blur-sm border-t border-blue-100/30">
+          <div className="flex items-center gap-2">
+            <div className="h-2 w-2 rounded-full bg-[#3B7DD8] animate-pulse" />
+            <span className="text-sm text-[#3B7DD8] font-medium">AI פעיל</span>
+          </div>
+          <button
+            onClick={() => setShowManualInput(true)}
+            className="text-xs text-[#5A6E62] underline hover:text-[#1B2E24] transition-colors"
+          >
+            שלח הודעה ידנית
+          </button>
+        </div>
       </div>
     )
   }
