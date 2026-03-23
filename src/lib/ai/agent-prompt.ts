@@ -898,10 +898,10 @@ ${stateResult.aiInstruction}
       if (errMsg.includes('TIME_SLOT_CONFLICT_SWAP_SENT')) {
         parsed.text = 'השעה הזאת תפוסה, שלחתי הודעה ללקוח שקבע כדי לבדוק אם הוא מוכן להחליף. אעדכן אותך! רוצה לבדוק שעה אחרת?'
         // Return to collecting_time so user can pick another slot
-        await saveBookingState(input.conversationId, { ...newState, step: 'collecting_time' as const })
+        await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
       } else if (errMsg.includes('TIME_SLOT_CONFLICT')) {
         parsed.text = 'אוי, השעה הזאת כבר תפוסה. רוצה לבדוק שעה אחרת?'
-        await saveBookingState(input.conversationId, { ...newState, step: 'collecting_time' as const })
+        await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
       } else {
         if (parsed.text === '__BOOKING_PENDING__') {
           parsed.text = 'סליחה, לא הצלחתי לקבוע את התור. אנסה שוב או שתפנה לעסק ישירות.'
