@@ -29,8 +29,9 @@ async function getDashboardData() {
       .from('appointments')
       .select('id, start_time, service_type, status, contacts(name)')
       .eq('business_id', businessId)
-      .gte('start_time', `${today}T00:00:00`)
-      .lte('start_time', `${today}T23:59:59`)
+      .in('status', ['confirmed', 'pending'])
+      .gte('start_time', new Date().toISOString())
+      .lte('start_time', `${today}T23:59:59+02:00`)
       .order('start_time', { ascending: true }),
     supabase
       .from('appointments')
@@ -81,7 +82,7 @@ async function getDashboardData() {
     },
     upcomingAppointments: todayAppointments.map((apt: any) => ({
       id: apt.id,
-      time: new Date(apt.start_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }),
+      time: new Date(apt.start_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' }),
       contactName: apt.contacts?.name || 'לא ידוע',
       service: apt.service_type || '',
       status: apt.status as 'confirmed' | 'pending' | 'cancelled',

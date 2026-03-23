@@ -74,14 +74,15 @@ export function AppointmentDetail({ appointment, onClose, onRefresh }: Appointme
   const [newDate, setNewDate] = useState(appointment.start_time.slice(0, 10))
   const [newTime, setNewTime] = useState(() => {
     const d = new Date(appointment.start_time)
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    return d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jerusalem' })
   })
 
   const colors = getServiceColor(appointment.service_type)
   const startDate = new Date(appointment.start_time)
-  const timeStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
+  const timeStr = startDate.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Jerusalem' })
   const dateStr = startDate.toLocaleDateString('he-IL', {
     weekday: 'long',
+    timeZone: 'Asia/Jerusalem',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
