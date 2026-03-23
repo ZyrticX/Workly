@@ -416,12 +416,17 @@ async function executeAction(
             timeStr = `${String(rH).padStart(2, '0')}:${String(rM).padStart(2, '0')}`
           }
 
-          // Calculate Israel timezone offset for this date
-          const testDate = new Date(`${params.date}T12:00:00Z`)
-          const israelOffset = -Math.round(
-            (testDate.getTime() - new Date(testDate.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).getTime()) / 3600000
-          )
-          const offsetStr = `${israelOffset >= 0 ? '+' : '-'}${String(Math.abs(israelOffset)).padStart(2, '0')}:00`
+          // Use Intl to get correct Israel offset (handles DST automatically)
+          const israelFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Jerusalem',
+            timeZoneName: 'shortOffset'
+          })
+          const parts = israelFormatter.formatToParts(new Date(`${params.date}T12:00:00Z`))
+          const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '+02:00'
+          // tzPart is like "GMT+2" or "GMT+3" - convert to offset string
+          const match = tzPart.match(/GMT([+-]\d+)/)
+          const offsetHours = match ? parseInt(match[1]) : 2
+          const offsetStr = `${offsetHours >= 0 ? '+' : '-'}${String(Math.abs(offsetHours)).padStart(2, '0')}:00`
 
           // Save with Israel timezone so DB stores correct UTC
           let startTime = `${params.date}T${timeStr}:00${offsetStr}`
@@ -614,11 +619,10 @@ async function executeAction(
         if (!service) service = services.find((s) => s.name.includes(rParams.service!) || rParams.service!.includes(s.name))
         if (!service && services.length === 1) service = services[0]
         if (service) {
-          // Israel timezone
-          const testDate2 = new Date(`${rParams.date}T12:00:00Z`)
-          const israelOff2 = -Math.round(
-            (testDate2.getTime() - new Date(testDate2.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })).getTime()) / 3600000
-          )
+          // Israel timezone (DST-aware)
+          const fmt2 = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jerusalem', timeZoneName: 'shortOffset' })
+          const tz2 = fmt2.formatToParts(new Date(`${rParams.date}T12:00:00Z`)).find(p => p.type === 'timeZoneName')?.value || 'GMT+2'
+          const israelOff2 = parseInt(tz2.match(/GMT([+-]\d+)/)?.[1] || '2')
           const offStr2 = `${israelOff2 >= 0 ? '+' : '-'}${String(Math.abs(israelOff2)).padStart(2, '0')}:00`
           const newStart = `${rParams.date}T${rParams.time}:00${offStr2}`
           const newEndLocal = addMinutesToTimeString(`${rParams.date}T${rParams.time}:00`, service.duration)
