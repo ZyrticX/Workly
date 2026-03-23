@@ -1,26 +1,332 @@
 @import "tailwindcss";
 
+/* ─── Design Tokens (CSS custom properties) ─── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Primary colors are set via inline style on <html> in layout.tsx (from cookie).
+     DO NOT define them here - CSS layers can override inline styles in Tailwind v4. */
+
+  /* Surface & Background */
+  --color-surface: #F7FAF8;
+  --color-background: #FFFFFF;
+  --color-border: #E8EFE9;
+
+  /* Text */
+  --color-text: #1B2E24;
+  --color-text-secondary: #5A6E62;
+  --color-text-muted: #8FA89A;
+
+  /* Status */
+  --color-success: #0F6E56;
+  --color-success-bg: #EDFAF0;
+  --color-warning: #B8860B;
+  --color-warning-bg: #FEF8EE;
+  --color-danger: #C54040;
+  --color-danger-bg: #FEF0F0;
+  --color-info: #3B7DD8;
+  --color-info-bg: #EEF6FE;
+
+  /* Radii */
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-badge: 8px;
 }
 
+/* ─── Tailwind v4 Theme ─── */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* NOTE: primary colors NOT in theme - they are dynamic CSS variables.
+     Using them in @theme causes Tailwind to replace var() with static values at build time.
+     Instead, use var(--color-primary) in arbitrary value syntax: bg-[var(--color-primary)] */
+  --color-surface: #F7FAF8;
+  --color-background: #FFFFFF;
+  --color-border: #E8EFE9;
+  --color-text: #1B2E24;
+  --color-text-secondary: #5A6E62;
+  --color-text-muted: #8FA89A;
+  --color-success: #0F6E56;
+  --color-success-bg: #EDFAF0;
+  --color-warning: #B8860B;
+  --color-warning-bg: #FEF8EE;
+  --color-danger: #C54040;
+  --color-danger-bg: #FEF0F0;
+  --color-info: #3B7DD8;
+  --color-info-bg: #EEF6FE;
+  --color-neutral: #5A6E62;
+  --color-neutral-bg: #F0F4F1;
+  --radius-card: 16px;
+  --radius-button: 12px;
+  --radius-badge: 8px;
+  --font-sans: 'Noto Sans Hebrew', system-ui, sans-serif;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* ─── Base Styles ─── */
+html, body {
+  overflow-x: hidden;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  direction: rtl;
+  font-family: 'Noto Sans Hebrew', system-ui, sans-serif;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Safe Area Padding (PWA) ─── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* ─── Scrollbar Styling ─── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-muted);
+}
+
+/* ─── Focus Visible ─── */
+*:focus-visible {
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ─── Dynamic Primary Color Classes ─── */
+/* These use CSS variables and will change when the theme changes */
+
+.btn-primary {
+  background-color: var(--color-primary) !important;
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-dark) !important;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bg-primary-dynamic {
+  background-color: var(--color-primary) !important;
+}
+
+.text-primary-dynamic {
+  color: var(--color-primary) !important;
+}
+
+.border-primary-dynamic {
+  border-color: var(--color-primary) !important;
+}
+
+/* ─── Glass Effects (iOS Glassmorphism) ─── */
+
+.glass {
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.glass-strong {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-card {
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+}
+
+.glass-nav {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid rgba(0, 0, 0, 0.1);
+}
+
+.glass-sidebar {
+  background: rgba(248, 250, 248, 0.8);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-inline-end: 0.5px solid rgba(0, 0, 0, 0.08);
+}
+
+/* ─── iOS-style Shadows ─── */
+
+.shadow-ios {
+  box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.04),
+              0 2px 8px rgba(0, 0, 0, 0.04),
+              0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+.shadow-ios-lg {
+  box-shadow: 0 0.5px 0 rgba(0, 0, 0, 0.04),
+              0 4px 16px rgba(0, 0, 0, 0.08),
+              0 16px 48px rgba(0, 0, 0, 0.08);
+}
+
+/* ─── iOS-style Gradient Mesh Background ─── */
+
+.bg-mesh {
+  background-color: var(--color-surface);
+  background-image:
+    radial-gradient(at 20% 20%, color-mix(in srgb, var(--color-primary) 6%, transparent) 0px, transparent 60%),
+    radial-gradient(at 80% 80%, rgba(59, 125, 216, 0.04) 0px, transparent 60%),
+    radial-gradient(at 50% 0%, color-mix(in srgb, var(--color-primary) 3%, transparent) 0px, transparent 50%);
+}
+
+/* ─── iOS-style Transitions ─── */
+
+.transition-ios {
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* ─── iOS-style Active Press Effect ─── */
+
+.press-effect:active {
+  transform: scale(0.97);
+  opacity: 0.9;
+}
+
+/* ─── Toast Slide-in Animation ─── */
+
+@keyframes slide-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-in-top {
+  animation: slide-in-top 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* ─── Backdrop Fade-in ─── */
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ─── Page Fade-in Transition ─── */
+
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-page-in {
+  animation: page-fade-in 0.2s ease-out;
+}
+
+/* ─── Typing Dots Animation (AI Chat) ─── */
+
+@keyframes typing-dot {
+  0%, 60%, 100% { opacity: 0.3; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-4px); }
+}
+
+/* ─── Status Indicator Pulse ─── */
+
+@keyframes status-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.15); }
+}
+
+.status-connected {
+  animation: status-pulse 2s ease-in-out infinite;
+}
+
+/* ─── Minimum Touch Target ─── */
+
+@media (pointer: coarse) {
+  button, a, [role="button"], [role="tab"], input[type="checkbox"] + div {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* ─── Custom Range Slider ─── */
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid currentColor;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: scale(1.05);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: white;
+  border: 3px solid currentColor;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+}
+
+/* ─── Accessible Focus Ring ─── */
+
+.focus-ring {
+  outline: none;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-primary-dark);
+  outline-offset: 2px;
+  border-radius: 8px;
 }
