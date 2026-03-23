@@ -735,12 +735,26 @@ Available services: ${services.map(s => s.name).join(', ')}
 Current booking step: ${bookingState.step}
 Today: ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
 
-Day lookup:
-ראשון = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((0 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA'); })()}
-שני = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((1 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA'); })()}
-שלישי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((2 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA'); })()}
-רביעי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA'); })()}
-חמישי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA'); })()}
+Day lookup (next occurrence of each day):
+${(() => {
+  // Get current date in Israel timezone
+  const now = new Date()
+  const israelDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+  const israelDayStr = now.toLocaleDateString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' })
+  const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
+  const todayDow = dayMap[israelDayStr] ?? 0
+  const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+
+  return [0, 1, 2, 3, 4, 5, 6].map(targetDay => {
+    let diff = (targetDay - todayDow + 7) % 7
+    if (diff === 0) diff = 7 // next week if same day
+    const future = new Date(israelDateStr + 'T12:00:00')
+    future.setDate(future.getDate() + diff)
+    return `${hebrewDays[targetDay]} = ${future.toLocaleDateString('en-CA')}`
+  }).join('\n')
+})()}
+היום = ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })}
+מחר = ${(() => { const t = new Date(); const isr = new Date(t.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }) + 'T12:00:00'); isr.setDate(isr.getDate() + 1); return isr.toLocaleDateString('en-CA'); })()}
 
 Extract these fields from the message:
 {
