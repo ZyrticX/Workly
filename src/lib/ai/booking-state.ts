@@ -11,8 +11,6 @@ export interface BookingState {
   date?: string
   time?: string
   notes?: string
-  forOther?: boolean
-  otherName?: string
 }
 
 export interface ExtractedData {
@@ -31,6 +29,15 @@ interface ServiceDef {
   price: number
 }
 
+// Return type: instead of hardcoded response text, return AI instructions
+interface StateResult {
+  newState: BookingState
+  aiInstruction: string // Tell the AI what to say (natural language instruction)
+  action: { type: string; params: Record<string, unknown> } | null
+  availableSlots?: string[] // For time selection
+  skipAI?: boolean // If true, use aiInstruction as literal response (for confirmations only)
+}
+
 // ── State Machine ──────────────────────────────────
 
 export function processState(
@@ -39,14 +46,15 @@ export function processState(
   services: ServiceDef[],
   contactName: string,
   workingHours: Record<string, unknown> | null
-): { newState: BookingState; response: string; action: { type: string; params: Record<string, unknown> } | null } {
+): StateResult {
   const state = { ...currentState }
-  let response = ''
+  let aiInstruction = ''
   let action: { type: string; params: Record<string, unknown> } | null = null
+  let availableSlots: string[] | undefined
+  let skipAI = false
 
   // ── New booking intent from idle ──
   if (state.step === 'idle' && (extracted.intent === 'book' || extracted.intent === 'check_availability')) {
-    // Check if service was mentioned
     if (extracted.service) {
       const svc = findService(extracted.service, services)
       if (svc) {
@@ -56,36 +64,36 @@ export function processState(
       }
     }
 
-    // Check if name is known from contact DB or message
+    // Use known name from DB
     const hasName = contactName && !/^\d+$/.test(contactName) && contactName !== 'לקוח' && !contactName.startsWith('972')
     if (extracted.name) state.name = extracted.name
-    else if (hasName) state.name = contactName // Already known from previous conversations!
+    else if (hasName) state.name = contactName
 
-    // Check if date/time provided upfront
     if (extracted.date) state.date = extracted.date
     if (extracted.time) state.time = extracted.time
 
     // Determine next step
     if (!state.service) {
       state.step = 'collecting_service'
-      const serviceList = services.map(s => `• ${s.name} (${s.duration} דק', ${s.price} ₪)`).join('\n')
-      response = `היי! איזה שירות מעניין אותך?\n${serviceList}`
+      const serviceList = services.map(s => `${s.name} (${s.duration} דקות, ${s.price} ₪)`).join(', ')
+      aiInstruction = `הלקוח רוצה לקבוע תור. שאל אותו בחמימות איזה שירות מעניין אותו. השירותים שלנו: ${serviceList}. אל תציג כרשימה יבשה - שאל בצורה שיחתית.`
     } else if (!state.name) {
       state.step = 'collecting_name'
-      response = `סבבה, ${state.service}. מה השם שלך?`
+      aiInstruction = `הלקוח רוצה ${state.service}. שאל אותו מה שמו בצורה חמה וידידותית. אם זה לקוח חוזר אמור לו שאתה שמח שחזר.`
     } else if (!state.date) {
       state.step = 'collecting_date'
-      response = `${state.name}, איזה יום מתאים לך?`
+      aiInstruction = `שלום ${state.name}! הוא רוצה ${state.service}. שאל אותו בצורה טבעית איזה יום מתאים לו. אפשר להציע "השבוע?" או "מתי נוח לך?"`
     } else if (!state.time) {
       state.step = 'collecting_time'
-      const slots = getValidSlots(state.serviceDuration || 30)
-      response = `באיזו שעה?\nשעות פנויות: ${slots}`
+      availableSlots = getValidSlots(state.serviceDuration || 30)
+      const dayName = getDayName(state.date!)
+      aiInstruction = `${state.name} רוצה ${state.service} ביום ${dayName}. שאל אותו באיזו שעה נוח לו. השעות הפנויות: ${availableSlots.join(', ')}. הצע 2-3 שעות מומלצות, אל תזרוק את כל הרשימה.`
     } else {
       state.step = 'confirming'
-      response = buildConfirmation(state)
+      aiInstruction = buildConfirmationInstruction(state)
     }
 
-    return { newState: state, response, action }
+    return { newState: state, aiInstruction, action, availableSlots }
   }
 
   // ── Collecting service ──
@@ -98,108 +106,101 @@ export function processState(
 
       if (!state.name) {
         state.step = 'collecting_name'
-        response = `${svc.name}, אחלה בחירה. מה השם שלך?`
+        aiInstruction = `הלקוח בחר ${svc.name}, אחלה בחירה! שאל אותו מה שמו.`
       } else if (!state.date) {
         state.step = 'collecting_date'
-        response = `מעולה. איזה יום מתאים לך?`
+        aiInstruction = `${state.name} בחר ${svc.name}. שאל אותו איזה יום מתאים לו.`
       } else {
         state.step = 'collecting_time'
-        const slots = getValidSlots(svc.duration)
-        response = `באיזו שעה?\n${slots}`
+        availableSlots = getValidSlots(svc.duration)
+        aiInstruction = `${state.name} רוצה ${svc.name}. שאל אותו באיזו שעה. שעות פנויות: ${availableSlots.slice(0, 5).join(', ')}...`
       }
     } else {
-      const serviceList = services.map(s => `• ${s.name}`).join('\n')
-      response = `לא הבנתי איזה שירות. תבחר מהרשימה:\n${serviceList}`
+      const serviceList = services.map(s => s.name).join(', ')
+      aiInstruction = `לא הבנתי איזה שירות הלקוח רוצה. תשאל אותו שוב בעדינות, בלי לגרום לו להרגיש רע. השירותים: ${serviceList}`
     }
-    return { newState: state, response, action }
+    return { newState: state, aiInstruction, action, availableSlots }
   }
 
   // ── Collecting name ──
   if (state.step === 'collecting_name') {
-    const name = extracted.name || extractNameFromText(extracted)
+    const name = extracted.name
     if (name && name.length > 1) {
       state.name = name
       if (!state.date) {
         state.step = 'collecting_date'
-        response = `נעים מאוד ${name}! איזה יום מתאים לך?`
+        aiInstruction = `נעים מאוד ${name}! עכשיו שאל אותו איזה יום מתאים לו ל${state.service}. תהיה חם וידידותי.`
       } else if (!state.time) {
         state.step = 'collecting_time'
-        const slots = getValidSlots(state.serviceDuration || 30)
-        response = `${name}, באיזו שעה? ${slots}`
+        availableSlots = getValidSlots(state.serviceDuration || 30)
+        aiInstruction = `${name} רוצה ${state.service}. שאל באיזו שעה. שעות: ${availableSlots.slice(0, 5).join(', ')}...`
       } else {
         state.step = 'confirming'
-        response = buildConfirmation(state)
+        aiInstruction = buildConfirmationInstruction(state)
       }
     } else {
-      response = `מה השם שלך? 😊`
+      aiInstruction = `לא הצלחתי להבין את השם. שאל שוב בצורה ידידותית, למשל "איך קוראים לך?" או "מה השם שאני רושם?"`
     }
-    return { newState: state, response, action }
+    return { newState: state, aiInstruction, action, availableSlots }
   }
 
   // ── Collecting date ──
   if (state.step === 'collecting_date') {
-    const date = extracted.date || extractDateFromText(extracted)
+    const date = extracted.date
     if (date) {
       state.date = date
       if (!state.time) {
         state.step = 'collecting_time'
         const dayName = getDayName(date)
-        const slots = getValidSlots(state.serviceDuration || 30)
-        response = `יום ${dayName}, מעולה. באיזו שעה?\n${slots}`
+        availableSlots = getValidSlots(state.serviceDuration || 30)
+        aiInstruction = `${state.name} בחר יום ${dayName}. שאל אותו באיזו שעה נוח לו. הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 6).join(', ')}. תהיה טבעי.`
       } else {
         state.step = 'confirming'
-        response = buildConfirmation(state)
+        aiInstruction = buildConfirmationInstruction(state)
       }
     } else {
-      response = `לא הצלחתי להבין את היום. תגיד למשל "יום ראשון" או "מחר" או תאריך מדויק`
+      aiInstruction = `לא הצלחתי להבין את היום. שאל שוב בצורה טבעית, למשל "איזה יום היה נוח לך? אפשר להגיד מחר, יום ראשון, או תאריך מדויק"`
     }
-    return { newState: state, response, action }
+    return { newState: state, aiInstruction, action, availableSlots }
   }
 
   // ── Collecting time ──
   if (state.step === 'collecting_time') {
     const time = extracted.time
     if (time) {
-      // Validate time is a valid slot
       const duration = state.serviceDuration || 30
       const [h, m] = time.split(':').map(Number)
       const totalMin = h * 60 + m
-      if (totalMin % duration !== 0) {
-        const rounded = Math.round(totalMin / duration) * duration
-        const rH = Math.floor(rounded / 60)
-        const rM = rounded % 60
-        const roundedTime = `${String(rH).padStart(2, '0')}:${String(rM).padStart(2, '0')}`
-        response = `השעה ${time} לא מתאימה ל${state.service}. השעה הקרובה היא ${roundedTime}. מתאים?`
-        state.time = roundedTime
-        state.step = 'confirming'
-        response = buildConfirmation(state)
-      } else {
-        state.time = time
-        state.step = 'collecting_notes'
-        response = `${time}, סבבה. יש הערות לתור? (אם אין, כתוב "אין")`
-      }
+
+      // Round to valid slot
+      const rounded = Math.round(totalMin / duration) * duration
+      const rH = Math.floor(rounded / 60)
+      const rM = rounded % 60
+      const validTime = `${String(rH).padStart(2, '0')}:${String(rM).padStart(2, '0')}`
+
+      state.time = validTime
+      state.step = 'collecting_notes'
+      aiInstruction = `${state.name} בחר שעה ${validTime} ל${state.service}. שאל אותו אם יש משהו שחשוב שנדע לפני התור, הערות מיוחדות, או שאפשר להמשיך. תהיה קל.`
     } else {
-      const slots = getValidSlots(state.serviceDuration || 30)
-      response = `באיזו שעה? ${slots}`
+      availableSlots = getValidSlots(state.serviceDuration || 30)
+      aiInstruction = `לא הצלחתי להבין את השעה. שאל שוב, הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 5).join(', ')}`
     }
-    return { newState: state, response, action }
+    return { newState: state, aiInstruction, action, availableSlots }
   }
 
   // ── Collecting notes ──
   if (state.step === 'collecting_notes') {
-    const notes = extracted.notes
-    if (notes && !['אין', 'לא', 'אין הערות', 'לא צריך'].includes(notes.trim())) {
-      state.notes = notes
+    if (extracted.notes && !['אין', 'לא', 'אין הערות', 'לא צריך', 'הכל טוב', 'בסדר'].includes(extracted.notes.trim())) {
+      state.notes = extracted.notes
     }
     state.step = 'confirming'
-    response = buildConfirmation(state)
-    return { newState: state, response, action }
+    aiInstruction = buildConfirmationInstruction(state)
+    return { newState: state, aiInstruction, action }
   }
 
   // ── Confirming ──
   if (state.step === 'confirming') {
     if (extracted.confirmation === true || extracted.intent === 'confirm') {
-      // Send action but DON'T say "קבעתי" yet - let executeAction confirm
       action = {
         type: 'book_appointment',
         params: {
@@ -210,63 +211,68 @@ export function processState(
           notes: state.notes || '',
         }
       }
-      // Response will be set AFTER executeAction succeeds in processAIAgent
-      response = `__BOOKING_PENDING__`
-      // Keep state until we know booking succeeded
-      return { newState: { ...state, step: 'idle' }, response, action }
+      skipAI = true
+      const dayName = getDayName(state.date!)
+      aiInstruction = `מעולה ${state.name}! קבעתי לך ${state.service} ליום ${dayName} (${formatDate(state.date!)}) בשעה ${state.time}. אם תצטרך לשנות משהו - פשוט תכתוב לי 🙏`
+      return { newState: { step: 'idle' }, aiInstruction, action, skipAI }
     } else if (extracted.confirmation === false || extracted.intent === 'deny') {
-      response = `אין בעיה, ביטלתי. רוצה לקבוע תור אחר?`
-      return { newState: { step: 'idle' }, response, action: null }
+      aiInstruction = `הלקוח לא רוצה את התור הזה. אמור לו שאין בעיה, ושאל אם הוא רוצה לקבוע בזמן אחר. תהיה נחמד ולא לוחץ.`
+      return { newState: { step: 'idle' }, aiInstruction, action: null }
     } else {
-      response = buildConfirmation(state) + '\n\nמאשר? (כן/לא)'
-      return { newState: state, response, action }
+      aiInstruction = buildConfirmationInstruction(state) + ' הלקוח לא אישר עדיין, שאל שוב בעדינות אם מאשר.'
+      return { newState: state, aiInstruction, action }
     }
   }
 
   // ── Cancel intent ──
   if (extracted.intent === 'cancel') {
     action = { type: 'cancel_appointment', params: {} }
-    response = `בסדר, ביטלתי את התור הקרוב שלך. רוצה לקבוע תור חדש?`
-    return { newState: { step: 'idle' }, response, action }
+    aiInstruction = `הלקוח רוצה לבטל תור. אמור לו שביטלת ושאל אם רוצה לקבוע תור חדש.`
+    return { newState: { step: 'idle' }, aiInstruction, action }
   }
 
   // ── Reschedule intent ──
   if (extracted.intent === 'reschedule') {
-    state.step = 'collecting_date'
-    state.service = state.service || undefined
-    response = `בטח, לאיזה יום תרצה להזיז?`
-    return { newState: { ...state, step: 'collecting_date' }, response, action: null }
+    aiInstruction = `הלקוח רוצה להזיז תור. שאל אותו לאיזה יום חדש הוא רוצה.`
+    return { newState: { ...state, step: 'collecting_date' }, aiInstruction, action: null }
   }
 
-  // ── Default: pass to AI for general response ──
-  return { newState: state, response: '', action: null }
+  // ── Default: let AI handle freely ──
+  return { newState: state, aiInstruction: '', action: null }
 }
 
 // ── Helpers ──────────────────────────────────────
 
 function findService(input: string, services: ServiceDef[]): ServiceDef | null {
   if (!input) return null
-  let svc = services.find(s => s.name === input)
-  if (!svc) svc = services.find(s => s.name.includes(input) || input.includes(s.name))
+  const lower = input.trim()
+  let svc = services.find(s => s.name === lower)
+  if (!svc) svc = services.find(s => s.name.includes(lower) || lower.includes(s.name))
+  // Fuzzy: check if any word matches
+  if (!svc) {
+    const words = lower.split(/\s+/)
+    svc = services.find(s => words.some(w => w.length > 2 && s.name.includes(w)))
+  }
   if (!svc && services.length === 1) svc = services[0]
   return svc || null
 }
 
-function getValidSlots(duration: number): string {
+function getValidSlots(duration: number): string[] {
   const slots: string[] = []
-  for (let m = 0; m < 540; m += duration) { // 9 hours from 9:00
-    const h = Math.floor((540 + m) / 60)
-    const mm = (540 + m) % 60
-    if (h >= 18) break
+  const startMin = 9 * 60 // 09:00
+  const endMin = 18 * 60 // 18:00
+  for (let m = startMin; m < endMin; m += duration) {
+    const h = Math.floor(m / 60)
+    const mm = m % 60
     slots.push(`${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`)
   }
-  return slots.join(', ')
+  return slots
 }
 
-function buildConfirmation(state: BookingState): string {
+function buildConfirmationInstruction(state: BookingState): string {
   const dayName = state.date ? getDayName(state.date) : ''
   const dateStr = state.date ? formatDate(state.date) : ''
-  return `אוקיי ${state.name}, מאשר/ת?\n📋 ${state.service}\n📅 יום ${dayName}, ${dateStr}\n🕐 ${state.time}\n${state.notes ? `📝 ${state.notes}\n` : ''}${state.servicePrice ? `💰 ${state.servicePrice} ₪` : ''}`
+  return `סכם את התור ללקוח ובקש אישור. הפרטים: שם: ${state.name}, שירות: ${state.service}, יום ${dayName} ${dateStr}, שעה: ${state.time}${state.servicePrice ? `, מחיר: ${state.servicePrice} ₪` : ''}${state.notes ? `, הערות: ${state.notes}` : ''}. שאל "מאשר?"`
 }
 
 function formatDate(dateStr: string): string {
@@ -280,13 +286,38 @@ function getDayName(dateStr: string): string {
   return days[d.getDay()] || ''
 }
 
-function extractNameFromText(data: ExtractedData): string | null {
-  // The AI extraction should handle this, but fallback
-  return data.name || null
-}
+// ── Check real availability in DB ──────────────────
 
-function extractDateFromText(data: ExtractedData): string | null {
-  return data.date || null
+export async function checkAvailability(
+  businessId: string,
+  date: string,
+  time: string,
+  duration: number
+): Promise<{ available: boolean; conflicts: string[] }> {
+  const supabase = createServiceClient()
+
+  const startTime = `${date}T${time}:00+02:00` // Israel timezone
+  const endMinutes = time.split(':').map(Number).reduce((h, m) => h * 60 + m, 0) + duration
+  const endH = Math.floor(endMinutes / 60)
+  const endM = endMinutes % 60
+  const endTime = `${date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00+02:00`
+
+  const { data: existing } = await supabase
+    .from('appointments')
+    .select('id, start_time, contact_name, service_type')
+    .eq('business_id', businessId)
+    .in('status', ['confirmed', 'pending'])
+    .lt('start_time', endTime)
+    .gt('end_time', startTime)
+
+  if (existing && existing.length > 0) {
+    return {
+      available: false,
+      conflicts: existing.map(a => `${a.contact_name} - ${a.service_type} בשעה ${new Date(a.start_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}`)
+    }
+  }
+
+  return { available: true, conflicts: [] }
 }
 
 // ── Load/Save State ──────────────────────────────

@@ -776,7 +776,7 @@ Rules:
   }
 
   // 6. Run state machine
-  const { newState, response: stateResponse, action: stateAction } = processState(
+  const stateResult = processState(
     bookingState,
     extracted,
     services,
@@ -785,46 +785,94 @@ Rules:
   )
 
   // Save new state
-  await saveBookingState(input.conversationId, newState)
+  await saveBookingState(input.conversationId, stateResult.newState)
 
-  // 7. If state machine handled it, use its response
+  // 7. Generate response
+  const aiAdvanced = (settingsResult.data?.ai_advanced as AdvancedAIConfig) || null
+  const baseSystemPrompt = buildSystemPrompt(
+    businessResult.data,
+    settingsResult.data,
+    personaResult.data,
+    contactCtx,
+    aiAdvanced
+  )
+
   let parsed: ParsedAIResponse
-  if (stateResponse) {
+
+  if (stateResult.aiInstruction && stateResult.skipAI) {
+    // Confirmation message - use literal text (already perfect)
     parsed = {
-      text: stateResponse,
+      text: stateResult.aiInstruction,
       intent: extracted.intent || 'other',
       confidence: 1.0,
-      action: stateAction,
+      action: stateResult.action,
+      escalated: false,
+    }
+  } else if (stateResult.aiInstruction) {
+    // State machine gave instructions - AI generates natural response
+    const guidedPrompt = `${baseSystemPrompt}
+
+## הנחיה נוכחית (חובה לבצע):
+${stateResult.aiInstruction}
+
+כללים:
+- ענה בעברית טבעית וחמה. אתה בן אדם אמיתי, לא בוט.
+- אל תגיד "אני בוט" או "אני AI" לעולם.
+- תהיה קצר - 1-3 משפטים מקסימום.
+- אל תחזור על מידע שכבר נאמר בשיחה.
+- אם הלקוח חוזר, הראה שאתה זוכר אותו.
+- ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.`
+
+    const aiResponse = await generateResponse(
+      guidedPrompt,
+      conversationHistory.slice(-8),
+      input.message
+    )
+
+    // Clean response - remove any JSON wrapping
+    let cleanText = aiResponse.replace(/```json\n?|```/g, '').trim()
+    try {
+      const maybeJson = JSON.parse(cleanText)
+      cleanText = maybeJson.text || maybeJson.response || cleanText
+    } catch {
+      // Not JSON, good - it's plain text
+    }
+
+    parsed = {
+      text: cleanText,
+      intent: extracted.intent || 'other',
+      confidence: 0.9,
+      action: stateResult.action,
       escalated: false,
     }
   } else {
-    // State machine didn't handle it → use AI for general response
-    const aiAdvanced = (settingsResult.data?.ai_advanced as AdvancedAIConfig) || null
-    const systemPrompt = buildSystemPrompt(
-      businessResult.data,
-      settingsResult.data,
-      personaResult.data,
-      contactCtx,
-      aiAdvanced
-    )
+    // No state machine instruction - free AI response
+    const freePrompt = `${baseSystemPrompt}
+
+ענה בעברית טבעית, חמה, כאילו אתה חבר. 1-3 משפטים. בלי JSON.
+אם הלקוח שואל שאלה שאתה לא יודע - אמור שתבדוק ותחזור אליו.
+אם הלקוח רוצה לדבר עם בן אדם - אמור שאתה מעביר לבעל העסק.`
 
     const aiResponse = await generateResponse(
-      systemPrompt,
+      freePrompt,
       conversationHistory,
       input.message
     )
 
+    let cleanText = aiResponse.replace(/```json\n?|```/g, '').trim()
     try {
-      const cleaned2 = aiResponse.replace(/```json\n?|```/g, '').trim()
-      parsed = JSON.parse(cleaned2) as ParsedAIResponse
+      const maybeJson = JSON.parse(cleanText)
+      cleanText = maybeJson.text || maybeJson.response || cleanText
     } catch {
-      parsed = {
-        text: aiResponse,
-        intent: extracted.intent || 'other',
-        confidence: 0.5,
-        action: null,
-        escalated: false,
-      }
+      // Plain text
+    }
+
+    parsed = {
+      text: cleanText,
+      intent: extracted.intent || 'other',
+      confidence: 0.5,
+      action: stateResult.action,
+      escalated: extracted.intent === 'other' && cleanText.includes('מעביר'),
     }
   }
 
