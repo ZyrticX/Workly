@@ -849,6 +849,39 @@ Rules:
     settingsResult.data?.working_hours as Record<string, unknown> | null
   )
 
+  // 6.5 Filter available slots by actual DB bookings
+  if (stateResult.availableSlots && stateResult.availableSlots.length > 0 && stateResult.newState.date) {
+    const { filterBookedSlots } = await import('@/lib/ai/booking-state')
+    const realSlots = await filterBookedSlots(
+      input.businessId,
+      stateResult.newState.date,
+      stateResult.availableSlots,
+      stateResult.newState.serviceDuration || 30
+    )
+
+    if (realSlots.length === 0) {
+      // All slots are booked — offer waitlist
+      stateResult.newState.step = 'waitlist_offer'
+      stateResult.aiInstruction = `כל השעות ביום הזה תפוסות. שאל את הלקוח אם רוצה להיכנס לרשימת המתנה, או לנסות יום אחר.`
+      stateResult.availableSlots = []
+    } else {
+      // Update instruction with real available slots
+      stateResult.availableSlots = realSlots
+      if (stateResult.aiInstruction) {
+        // Replace the theoretical slots in the instruction with real ones
+        stateResult.aiInstruction = stateResult.aiInstruction.replace(
+          /שעות פנויות:.*$/m,
+          `שעות פנויות: ${realSlots.slice(0, 6).join(', ')}`
+        )
+        // Also replace slot suggestions in other patterns
+        stateResult.aiInstruction = stateResult.aiInstruction.replace(
+          /הצע [\d\-]+ שעות מתוך:.*$/m,
+          `הצע 2-3 שעות מתוך: ${realSlots.slice(0, 5).join(', ')}`
+        )
+      }
+    }
+  }
+
   // Save new state
   await saveBookingState(input.conversationId, stateResult.newState)
 

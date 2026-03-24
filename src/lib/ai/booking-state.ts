@@ -366,6 +366,50 @@ function getValidSlots(
   return slots
 }
 
+// ── Filter slots by actual DB availability ──────────
+
+export async function filterBookedSlots(
+  businessId: string,
+  date: string,
+  theoreticalSlots: string[],
+  duration: number
+): Promise<string[]> {
+  const supabase = createServiceClient()
+
+  // Get all booked appointments for that date
+  const dayStart = `${date}T00:00:00`
+  const dayEnd = `${date}T23:59:59`
+
+  const { data: booked } = await supabase
+    .from('appointments')
+    .select('start_time, end_time')
+    .eq('business_id', businessId)
+    .in('status', ['confirmed', 'pending'])
+    .gte('start_time', dayStart)
+    .lte('start_time', dayEnd)
+
+  if (!booked || booked.length === 0) return theoreticalSlots
+
+  // Filter out slots that overlap with existing appointments
+  return theoreticalSlots.filter(slot => {
+    const [h, m] = slot.split(':').map(Number)
+    const slotStart = h * 60 + m
+    const slotEnd = slotStart + duration
+
+    for (const apt of booked) {
+      const aptStart = parseInt((apt.start_time as string).substring(11, 13)) * 60 +
+                       parseInt((apt.start_time as string).substring(14, 16))
+      const aptEnd = parseInt((apt.end_time as string).substring(11, 13)) * 60 +
+                     parseInt((apt.end_time as string).substring(14, 16))
+
+      if (slotStart < aptEnd && slotEnd > aptStart) {
+        return false // Overlaps — not available
+      }
+    }
+    return true
+  })
+}
+
 function buildConfirmationInstruction(state: BookingState): string {
   const dayName = state.date ? getDayName(state.date) : ''
   const dateStr = state.date ? formatDate(state.date) : ''
