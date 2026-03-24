@@ -190,9 +190,12 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
   }
 
   function getAppointmentsForSlot(time: string): Appointment[] {
+    const dateKey = formatDateKey(currentDate)
     return filterByStatus(appointments.filter((a) => {
-      const t = new Date(a.start_time)
-      const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
+      // Extract HH:MM directly from naive timestamp string (no timezone conversion)
+      const startStr = a.start_time as string
+      if (!startStr.startsWith(dateKey)) return false
+      const hhmm = startStr.substring(11, 16) // "2026-03-25 09:45:00" → "09:45"
       return hhmm === time
     }))
   }

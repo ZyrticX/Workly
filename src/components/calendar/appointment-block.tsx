@@ -30,8 +30,8 @@ export function AppointmentBlock({ appointment, variant, onRefresh }: Appointmen
   const [showDetail, setShowDetail] = useState(false)
   const colors = getServiceColor(appointment.service_type)
 
-  const startDate = new Date(appointment.start_time)
-  const timeStr = `${String(startDate.getHours()).padStart(2, '0')}:${String(startDate.getMinutes()).padStart(2, '0')}`
+  // Extract HH:MM directly from naive timestamp string (no timezone conversion)
+  const timeStr = (appointment.start_time as string).substring(11, 16)
 
   const isCancelled = appointment.status === 'cancelled'
   const isCompleted = appointment.status === 'completed'
