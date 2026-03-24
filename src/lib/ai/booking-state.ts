@@ -85,7 +85,7 @@ export function processState(
       aiInstruction = `שלום ${state.name}! הוא רוצה ${state.service}. שאל אותו בצורה טבעית איזה יום מתאים לו. אפשר להציע "השבוע?" או "מתי נוח לך?"`
     } else if (!state.time) {
       state.step = 'collecting_time'
-      availableSlots = getValidSlots(state.serviceDuration || 30)
+      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
       const dayName = getDayName(state.date!)
       aiInstruction = `${state.name} רוצה ${state.service} ביום ${dayName}. שאל אותו באיזו שעה נוח לו. השעות הפנויות: ${availableSlots.join(', ')}. הצע 2-3 שעות מומלצות, אל תזרוק את כל הרשימה.`
     } else {
@@ -112,7 +112,7 @@ export function processState(
         aiInstruction = `${state.name} בחר ${svc.name}. שאל אותו איזה יום מתאים לו.`
       } else {
         state.step = 'collecting_time'
-        availableSlots = getValidSlots(svc.duration)
+        availableSlots = getValidSlots(svc.duration, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
         aiInstruction = `${state.name} רוצה ${svc.name}. שאל אותו באיזו שעה. שעות פנויות: ${availableSlots.slice(0, 5).join(', ')}...`
       }
     } else {
@@ -132,7 +132,7 @@ export function processState(
         aiInstruction = `נעים מאוד ${name}! עכשיו שאל אותו איזה יום מתאים לו ל${state.service}. תהיה חם וידידותי.`
       } else if (!state.time) {
         state.step = 'collecting_time'
-        availableSlots = getValidSlots(state.serviceDuration || 30)
+        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
         aiInstruction = `${name} רוצה ${state.service}. שאל באיזו שעה. שעות: ${availableSlots.slice(0, 5).join(', ')}...`
       } else {
         state.step = 'confirming'
@@ -152,7 +152,7 @@ export function processState(
       if (!state.time) {
         state.step = 'collecting_time'
         const dayName = getDayName(date)
-        availableSlots = getValidSlots(state.serviceDuration || 30)
+        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
         aiInstruction = `${state.name} בחר יום ${dayName}. שאל אותו באיזו שעה נוח לו. הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 6).join(', ')}. תהיה טבעי.`
       } else {
         state.step = 'confirming'
@@ -172,10 +172,23 @@ export function processState(
       const [h, m] = time.split(':').map(Number)
       const totalMin = h * 60 + m
 
-      // Validate working hours (8:00 - 20:00)
-      if (h < 8 || h >= 20) {
-        availableSlots = getValidSlots(duration)
-        aiInstruction = `הלקוח ביקש שעה ${time} שהיא מחוץ לשעות העבודה (8:00-20:00). אמור לו בעדינות שאנחנו לא עובדים בשעה הזו, והצע שעות מתוך: ${availableSlots.slice(0, 5).join(', ')}`
+      // Validate against real working hours (not hardcoded)
+      const dayIdx = state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined
+      const validSlots = getValidSlots(duration, workingHours, dayIdx)
+      if (validSlots.length === 0) {
+        aiInstruction = `הלקוח ביקש שעה ${time} אבל אנחנו סגורים ביום הזה. אמור לו בעדינות ושאל אם רוצה יום אחר.`
+        state.date = undefined
+        state.step = 'collecting_date'
+        return { newState: state, aiInstruction, action }
+      }
+      if (!validSlots.includes(time)) {
+        availableSlots = validSlots
+        const closest = validSlots.reduce((prev, curr) => {
+          const prevDiff = Math.abs(prev.split(':').reduce((h2, m2) => Number(h2) * 60 + Number(m2), 0) - totalMin)
+          const currDiff = Math.abs(curr.split(':').reduce((h2, m2) => Number(h2) * 60 + Number(m2), 0) - totalMin)
+          return currDiff < prevDiff ? curr : prev
+        })
+        aiInstruction = `הלקוח ביקש ${time} אבל זה לא מתאים. הצע בעדינות שעות קרובות: ${closest} או ${validSlots.slice(0, 4).join(', ')}`
         return { newState: state, aiInstruction, action, availableSlots }
       }
 
@@ -189,7 +202,7 @@ export function processState(
       state.step = 'collecting_notes'
       aiInstruction = `${state.name} בחר שעה ${validTime} ל${state.service}. שאל אותו אם יש משהו שחשוב שנדע לפני התור, הערות מיוחדות, או שאפשר להמשיך. תהיה קל.`
     } else {
-      availableSlots = getValidSlots(state.serviceDuration || 30)
+      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
       aiInstruction = `לא הצלחתי להבין את השעה. שאל שוב, הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 5).join(', ')}`
     }
     return { newState: state, aiInstruction, action, availableSlots }
@@ -264,14 +277,60 @@ function findService(input: string, services: ServiceDef[]): ServiceDef | null {
   return svc || null
 }
 
-function getValidSlots(duration: number): string[] {
+function getValidSlots(
+  duration: number,
+  workingHours?: Record<string, unknown> | null,
+  dayOfWeek?: number
+): string[] {
+  // Read real working hours from business settings
+  let startMin = 9 * 60 // fallback 09:00
+  let endMin = 18 * 60  // fallback 18:00
+  let breaks: Array<{ start: string; end: string }> = []
+
+  if (workingHours && dayOfWeek !== undefined) {
+    const dayKey = String(dayOfWeek)
+    const dayConfig = workingHours[dayKey] as { active?: boolean; start?: string; end?: string; breaks?: Array<{ start: string; end: string }> } | undefined
+
+    if (dayConfig) {
+      if (!dayConfig.active) return [] // Day is closed
+
+      if (dayConfig.start) {
+        const [h, m] = dayConfig.start.split(':').map(Number)
+        startMin = h * 60 + (m || 0)
+      }
+      if (dayConfig.end) {
+        const [h, m] = dayConfig.end.split(':').map(Number)
+        endMin = h * 60 + (m || 0)
+      }
+      if (dayConfig.breaks) {
+        breaks = dayConfig.breaks
+      }
+    }
+  }
+
   const slots: string[] = []
-  const startMin = 9 * 60 // 09:00
-  const endMin = 18 * 60 // 18:00
-  for (let m = startMin; m < endMin; m += duration) {
+  for (let m = startMin; m + duration <= endMin; m += duration) {
     const h = Math.floor(m / 60)
     const mm = m % 60
-    slots.push(`${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`)
+    const slotTime = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+    const slotEnd = m + duration
+
+    // Check if slot overlaps with any break
+    let duringBreak = false
+    for (const brk of breaks) {
+      const [bh, bm] = brk.start.split(':').map(Number)
+      const [eh, em] = brk.end.split(':').map(Number)
+      const breakStart = bh * 60 + (bm || 0)
+      const breakEnd = eh * 60 + (em || 0)
+      if (m < breakEnd && slotEnd > breakStart) {
+        duringBreak = true
+        break
+      }
+    }
+
+    if (!duringBreak) {
+      slots.push(slotTime)
+    }
   }
   return slots
 }
@@ -303,11 +362,12 @@ export async function checkAvailability(
 ): Promise<{ available: boolean; conflicts: string[] }> {
   const supabase = createServiceClient()
 
-  const startTime = `${date}T${time}:00+02:00` // Israel timezone
+  // Naive timestamps — no timezone suffix. All times are Israel local.
+  const startTime = `${date}T${time}:00`
   const endMinutes = time.split(':').map(Number).reduce((h, m) => h * 60 + m, 0) + duration
   const endH = Math.floor(endMinutes / 60)
   const endM = endMinutes % 60
-  const endTime = `${date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00+02:00`
+  const endTime = `${date}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`
 
   const { data: existing } = await supabase
     .from('appointments')
@@ -320,7 +380,10 @@ export async function checkAvailability(
   if (existing && existing.length > 0) {
     return {
       available: false,
-      conflicts: existing.map(a => `${a.contact_name} - ${a.service_type} בשעה ${new Date(a.start_time).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' })}`)
+      conflicts: existing.map(a => {
+        const t = (a.start_time as string).substring(11, 16) // Extract HH:MM from naive timestamp
+        return `${a.contact_name} - ${a.service_type} בשעה ${t}`
+      })
     }
   }
 

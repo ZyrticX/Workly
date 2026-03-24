@@ -67,23 +67,27 @@ export async function POST(req: NextRequest) {
       }
 
       // 2. Find or create contact
-      // Try to find by wa_id first (exact match), then by chatId (for LID)
+      // Try chatId first (full format with @c.us/@lid), then stripped format for backwards compat
       let { data: contact } = await supabase
         .from('contacts')
         .select('id, business_id, wa_id, phone, name, status')
         .eq('business_id', phone.business_id)
-        .eq('wa_id', from)
+        .eq('wa_id', chatId)
         .single()
 
-      // If not found and it's a LID, also try searching by chatId
-      if (!contact && isLid) {
-        const { data: lidContact } = await supabase
+      // Backwards compat: old contacts stored wa_id without suffix
+      if (!contact) {
+        const { data: legacyContact } = await supabase
           .from('contacts')
           .select('id, business_id, wa_id, phone, name, status')
           .eq('business_id', phone.business_id)
-          .eq('wa_id', chatId)
+          .eq('wa_id', from)
           .single()
-        if (lidContact) contact = lidContact
+        if (legacyContact) {
+          contact = legacyContact
+          // Migrate: update wa_id to include suffix
+          await supabase.from('contacts').update({ wa_id: chatId }).eq('id', legacyContact.id)
+        }
       }
 
       if (!contact) {
@@ -103,7 +107,7 @@ export async function POST(req: NextRequest) {
           .from('contacts')
           .insert({
             business_id: phone.business_id,
-            wa_id: from,
+            wa_id: chatId, // Store full chatId with @c.us or @lid suffix — send exactly as-is
             phone: contactPhone,
             name: displayName,
             status: 'new',

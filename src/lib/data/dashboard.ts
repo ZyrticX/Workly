@@ -81,12 +81,13 @@ export async function getDashboardData(): Promise<DashboardData> {
   // Parallel queries — all scoped by business_id + RLS
   const [appointments, monthRevenue, newContacts, cancellations] =
     await Promise.all([
-      // 1. Today's appointments with contact name
+      // 1. Today's upcoming appointments (exclude cancelled + past)
       supabase
         .from('appointments')
         .select('*, contacts(name, phone)')
         .eq('business_id', businessId)
-        .gte('start_time', `${today}T00:00:00`)
+        .in('status', ['confirmed', 'pending'])
+        .gte('start_time', new Date().toISOString())
         .lte('start_time', `${today}T23:59:59`)
         .order('start_time'),
 

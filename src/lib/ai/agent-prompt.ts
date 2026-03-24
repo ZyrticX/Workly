@@ -483,30 +483,27 @@ async function executeAction(
             console.log(`[agent] Updated contact ${input.contactId} name to: ${learnedName}`)
           }
 
-          await supabase.from('appointments').insert({
-            business_id: input.businessId,
-            contact_id: input.contactId,
-            service_type: params.service,
-            start_time: startTime,
-            end_time: endTime,
-            duration_minutes: service.duration,
-            price: service.price,
-            status: 'confirmed',
-            notes: params.notes || null,
-            contact_name: learnedName || input.contactName || null,
+          // Use atomic RPC to prevent race conditions (advisory lock + conflict check + insert)
+          const { data: aptId, error: rpcError } = await supabase.rpc('book_appointment_atomic', {
+            p_business_id: input.businessId,
+            p_contact_id: input.contactId,
+            p_service_type: params.service as string,
+            p_start_time: startTime,
+            p_end_time: endTime,
+            p_duration_minutes: service.duration,
+            p_price: service.price,
+            p_contact_name: learnedName || input.contactName || '',
+            p_notes: (params.notes as string) || '',
           })
 
-          // Update contact name if provided and current name is just a number
-          if (params.contact_name) {
-            const { data: currentContact } = await supabase
-              .from('contacts')
-              .select('name')
-              .eq('id', input.contactId)
-              .single()
-            if (currentContact && /^\d+$/.test(currentContact.name || '')) {
-              await supabase.from('contacts').update({ name: params.contact_name }).eq('id', input.contactId)
+          if (rpcError) {
+            if (rpcError.message?.includes('TIME_SLOT_CONFLICT')) {
+              throw new Error('TIME_SLOT_CONFLICT')
             }
+            throw rpcError
           }
+
+          // RPC already updates contact stats (total_visits + total_revenue)
 
           // Send notification
           await supabase.from('notifications').insert({

@@ -31,7 +31,7 @@ async function getDashboardData() {
       .eq('business_id', businessId)
       .in('status', ['confirmed', 'pending'])
       .gte('start_time', new Date().toISOString())
-      .lte('start_time', `${today}T23:59:59+02:00`)
+      .lte('start_time', `${today}T23:59:59`)
       .order('start_time', { ascending: true }),
     supabase
       .from('appointments')
