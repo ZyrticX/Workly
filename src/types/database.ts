@@ -31,6 +31,7 @@ export interface Conversation {
   status: string
   assigned_to: string | null
   is_bot_active: boolean
+  error_count: number
   last_message_at: string
   created_at: string
 }

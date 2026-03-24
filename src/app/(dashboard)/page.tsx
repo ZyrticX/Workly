@@ -2,8 +2,70 @@ import { createClient } from '@/lib/supabase/server'
 import { StatCard } from '@/components/dashboard/stat-card'
 import { AvatarInitials } from '@/components/ui/avatar-initials'
 import { StatusBadge } from '@/components/ui/status-badge'
-import { Calendar, DollarSign, UserPlus, XCircle, Settings, MessageCircle } from 'lucide-react'
+import {
+  Calendar,
+  DollarSign,
+  UserPlus,
+  XCircle,
+  Settings,
+  MessageCircle,
+  Bell,
+  AlertTriangle,
+  ArrowRightLeft,
+  Clock,
+} from 'lucide-react'
 import Link from 'next/link'
+
+/* ─── Helpers ─── */
+
+const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'] as const
+
+function hebrewDayName(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `יום ${HEBREW_DAYS[d.getDay()]}`
+}
+
+function formatShortDate(dateStr: string): string {
+  const d = new Date(dateStr)
+  return `${d.getDate()}/${d.getMonth() + 1}`
+}
+
+function timeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMin = Math.floor(diffMs / 60000)
+  if (diffMin < 1) return 'עכשיו'
+  if (diffMin < 60) return `לפני ${diffMin} דק׳`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `לפני ${diffHr} שע׳`
+  const diffDays = Math.floor(diffHr / 24)
+  if (diffDays === 1) return 'אתמול'
+  return `לפני ${diffDays} ימים`
+}
+
+function getGreeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'בוקר טוב'
+  if (hour < 17) return 'צהריים טובים'
+  return 'ערב טוב'
+}
+
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(amount)
+}
+
+/* ─── Notification type config ─── */
+
+const notificationConfig: Record<string, { icon: typeof Bell; colorClass: string }> = {
+  new_appointment: { icon: Calendar, colorClass: 'text-green-600 bg-green-50' },
+  cancelled_appointment: { icon: XCircle, colorClass: 'text-red-500 bg-red-50' },
+  rescheduled_appointment: { icon: ArrowRightLeft, colorClass: 'text-amber-500 bg-amber-50' },
+  new_contact: { icon: UserPlus, colorClass: 'text-blue-500 bg-blue-50' },
+  escalation: { icon: AlertTriangle, colorClass: 'text-orange-500 bg-orange-50' },
+  waitlist: { icon: Clock, colorClass: 'text-purple-500 bg-purple-50' },
+  system: { icon: Bell, colorClass: 'text-gray-500 bg-gray-50' },
+}
 
 /* ─── Data fetching ─── */
 async function getDashboardData() {
@@ -19,18 +81,35 @@ async function getDashboardData() {
   if (!bu) return null
 
   const businessId = bu.business_id
-  const today = new Date().toISOString().split('T')[0]
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString()
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   const startOfWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [businessRes, todayAptsRes, monthRevenueRes, newContactsRes, cancelledRes, totalAptsRes, waSessionRes] = await Promise.all([
+  // Calculate end of week (7 days from today)
+  const endOfWeekDate = new Date(now)
+  endOfWeekDate.setDate(endOfWeekDate.getDate() + 7)
+  const endOfWeek = endOfWeekDate.toISOString().split('T')[0]
+
+  const [
+    businessRes,
+    todayAptsRes,
+    monthRevenueRes,
+    newContactsRes,
+    cancelledRes,
+    totalAptsRes,
+    waSessionRes,
+    weekAptsRes,
+    notificationsRes,
+    todayCancelledRes,
+  ] = await Promise.all([
     supabase.from('businesses').select('name').eq('id', businessId).single(),
     supabase
       .from('appointments')
       .select('id, start_time, service_type, status, contacts(name)')
       .eq('business_id', businessId)
       .in('status', ['confirmed', 'pending'])
-      .gte('start_time', new Date().toISOString())
+      .gte('start_time', now.toISOString())
       .lte('start_time', `${today}T23:59:59`)
       .order('start_time', { ascending: true }),
     supabase
@@ -60,6 +139,31 @@ async function getDashboardData() {
       .select('status')
       .eq('business_id', businessId)
       .single(),
+    // Week appointments: all confirmed/pending from now through end of week
+    supabase
+      .from('appointments')
+      .select('id, start_time, service_type, status, contacts(name)', { count: 'exact' })
+      .eq('business_id', businessId)
+      .in('status', ['confirmed', 'pending'])
+      .gte('start_time', now.toISOString())
+      .lte('start_time', `${endOfWeek}T23:59:59`)
+      .order('start_time', { ascending: true })
+      .limit(5),
+    // Recent notifications
+    supabase
+      .from('notifications')
+      .select('id, type, title, body, created_at')
+      .eq('business_id', businessId)
+      .order('created_at', { ascending: false })
+      .limit(10),
+    // Today's cancellations with contact names
+    supabase
+      .from('appointments')
+      .select('id, contacts(name)')
+      .eq('business_id', businessId)
+      .eq('status', 'cancelled')
+      .gte('start_time', `${today}T00:00:00`)
+      .lte('start_time', `${today}T23:59:59`),
   ])
 
   const businessName = businessRes.data?.name || 'העסק שלי'
@@ -70,6 +174,32 @@ async function getDashboardData() {
   const totalAptsCount = totalAptsRes.count || 0
   const cancellationRate = totalAptsCount > 0 ? ((cancelledCount / totalAptsCount) * 100) : 0
   const whatsappConnected = waSessionRes.data?.status === 'connected'
+
+  // Week appointments
+  const weekAppointments = (weekAptsRes.data || []).map((apt: any) => ({
+    id: apt.id,
+    startTime: apt.start_time as string,
+    time: (apt.start_time as string).substring(11, 16),
+    contactName: apt.contacts?.name || 'לא ידוע',
+    service: apt.service_type || '',
+    status: apt.status as 'confirmed' | 'pending',
+  }))
+  const weekAptsTotal = weekAptsRes.count || 0
+
+  // Notifications
+  const recentNotifications = (notificationsRes.data || []).map((n: any) => ({
+    id: n.id as string,
+    type: n.type as string,
+    title: n.title as string,
+    body: n.body as string | null,
+    createdAt: n.created_at as string,
+  }))
+
+  // Today's cancellations
+  const todayCancellations = (todayCancelledRes.data || []).map((apt: any) => ({
+    id: apt.id as string,
+    contactName: apt.contacts?.name || 'לא ידוע',
+  }))
 
   return {
     businessName,
@@ -87,19 +217,11 @@ async function getDashboardData() {
       service: apt.service_type || '',
       status: apt.status as 'confirmed' | 'pending' | 'cancelled',
     })),
+    weekAppointments,
+    weekAptsTotal,
+    recentNotifications,
+    todayCancellations,
   }
-}
-
-/* ─── Greeting ─── */
-function getGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'בוקר טוב'
-  if (hour < 17) return 'צהריים טובים'
-  return 'ערב טוב'
-}
-
-function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('he-IL', { style: 'currency', currency: 'ILS', maximumFractionDigits: 0 }).format(amount)
 }
 
 /* ─── Page ─── */
@@ -136,6 +258,8 @@ export default async function DashboardPage() {
         <h1 className="text-xl font-bold text-[var(--color-text)]">
           {getGreeting()}, {data.businessName}
         </h1>
+
+        {/* §4 — WhatsApp Connection Status (prominent) */}
         <Link
           href="/settings"
           aria-label={data.whatsappConnected ? 'WhatsApp מחובר' : 'WhatsApp לא מחובר - לחץ לחיבור'}
@@ -143,18 +267,17 @@ export default async function DashboardPage() {
             !data.whatsappConnected ? 'ring-1 ring-[var(--color-danger)]/30' : ''
           }`}
         >
-          <MessageCircle className={`w-4 h-4 ${data.whatsappConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]'}`} />
-          <span className="text-xs font-medium text-[var(--color-text-secondary)]">WhatsApp</span>
           <span
-            className={`h-2.5 w-2.5 rounded-full ${
+            className={`h-2.5 w-2.5 rounded-full shrink-0 ${
               data.whatsappConnected
                 ? 'bg-green-500 status-connected'
-                : 'bg-[var(--color-danger)]'
+                : 'bg-[var(--color-danger)] animate-pulse'
             }`}
             aria-hidden="true"
           />
-          <span className={`text-[10px] font-medium ${data.whatsappConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
-            {data.whatsappConnected ? 'מחובר' : 'מנותק'}
+          <MessageCircle className={`w-4 h-4 ${data.whatsappConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]'}`} />
+          <span className={`text-xs font-semibold ${data.whatsappConnected ? 'text-[var(--color-success)]' : 'text-[var(--color-danger)]'}`}>
+            {data.whatsappConnected ? 'WhatsApp מחובר' : 'WhatsApp מנותק — לחץ לחבר'}
           </span>
         </Link>
       </div>
@@ -183,7 +306,24 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Upcoming Appointments */}
+      {/* §3 — Cancellations Today Warning */}
+      {data.todayCancellations.length > 0 && (
+        <div className="glass-card shadow-ios rounded-2xl p-4 flex items-start gap-3 ring-1 ring-red-200/50 bg-red-50/30">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-500">
+            <XCircle className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-red-600">
+              {data.todayCancellations.length} ביטולים היום
+            </p>
+            <p className="text-xs text-red-500/80 mt-0.5">
+              {data.todayCancellations.map(c => c.contactName).join(', ')}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Upcoming Appointments Today */}
       <div>
         <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] mb-3">תורים קרובים</h2>
         {data.upcomingAppointments.length === 0 ? (
@@ -222,8 +362,98 @@ export default async function DashboardPage() {
           href="/calendar"
           className="block text-center text-xs text-[var(--color-primary-dark)] font-medium mt-3 py-2 hover:underline"
         >
-          היסטוריית תורים →
+          היסטוריית תורים &larr;
         </Link>
+      </div>
+
+      {/* §1 — This Week's Appointments Summary */}
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-[var(--color-text-secondary)]">
+            השבוע
+          </h2>
+          <span className="text-xs font-medium text-[var(--color-primary)] glass-card rounded-lg px-2 py-1">
+            {data.weekAptsTotal} תורים
+          </span>
+        </div>
+        {data.weekAppointments.length === 0 ? (
+          <div className="glass-card shadow-ios rounded-2xl p-8 text-center">
+            <p className="text-sm text-[var(--color-text-muted)]">אין תורים השבוע</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {data.weekAppointments.map((apt) => (
+              <div
+                key={apt.id}
+                className="glass-card shadow-ios rounded-2xl p-4 flex items-center gap-3 transition-ios hover:shadow-ios-lg"
+              >
+                <div className="min-w-[70px] text-center">
+                  <p className="text-[11px] font-medium text-[var(--color-text-muted)]">
+                    {hebrewDayName(apt.startTime)}
+                  </p>
+                  <p className="text-xs text-[var(--color-text-secondary)]">
+                    {formatShortDate(apt.startTime)}
+                  </p>
+                  <p className="text-sm font-bold text-[var(--color-primary-dark)]">
+                    {apt.time}
+                  </p>
+                </div>
+                <AvatarInitials name={apt.contactName} size="md" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-[#1B2E24] truncate">{apt.contactName}</p>
+                  <p className="text-xs text-[#8FA89A] truncate">{apt.service}</p>
+                </div>
+                <StatusBadge
+                  variant={apt.status === 'confirmed' ? 'success' : 'warning'}
+                >
+                  {apt.status === 'confirmed' ? 'מאושר' : 'ממתין'}
+                </StatusBadge>
+              </div>
+            ))}
+            {data.weekAptsTotal > 5 && (
+              <Link
+                href="/calendar"
+                className="block text-center text-xs text-[var(--color-primary-dark)] font-medium py-2 hover:underline"
+              >
+                עוד {data.weekAptsTotal - 5} תורים השבוע &larr;
+              </Link>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* §2 — Recent Activity Feed */}
+      <div>
+        <h2 className="text-sm font-semibold text-[var(--color-text-secondary)] mb-3">
+          פעילות אחרונה
+        </h2>
+        {data.recentNotifications.length === 0 ? (
+          <div className="glass-card shadow-ios rounded-2xl p-8 text-center">
+            <Bell className="w-8 h-8 text-[var(--color-text-muted)] opacity-40 mx-auto mb-2" />
+            <p className="text-sm text-[var(--color-text-muted)]">אין פעילות אחרונה</p>
+          </div>
+        ) : (
+          <div className="glass-card shadow-ios rounded-2xl overflow-hidden divide-y divide-[#E8EFE9]/50">
+            {data.recentNotifications.map((n) => {
+              const config = notificationConfig[n.type] || notificationConfig.system
+              const Icon = config.icon
+              return (
+                <div key={n.id} className="flex items-start gap-3 p-4">
+                  <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${config.colorClass}`}>
+                    <Icon className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[#1B2E24] truncate">{n.title}</p>
+                    {n.body && (
+                      <p className="text-xs text-[#8FA89A] mt-0.5 line-clamp-2">{n.body}</p>
+                    )}
+                    <p className="text-[11px] text-[#8FA89A] mt-1">{timeAgo(n.createdAt)}</p>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>
   )

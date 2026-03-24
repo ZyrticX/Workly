@@ -1,10 +1,91 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { processAIAgent } from '@/lib/ai/agent-prompt'
+import { processAIAgent, ERROR_MESSAGES } from '@/lib/ai/agent-prompt'
 import { whatsapp } from '@/lib/waha/provider'
 
 // ── Webhook Handler for WAHA ────────────────────────────
 // Uses service client — webhooks have no auth context.
+
+// ── Conversation-level mutex to prevent double responses ──
+// Key: conversationId, Value: timestamp when lock was acquired
+const conversationLocks = new Map<string, number>()
+const LOCK_TTL_MS = 30_000 // 30s max lock duration (safety valve)
+
+function acquireLock(conversationId: string): boolean {
+  const now = Date.now()
+  const existing = conversationLocks.get(conversationId)
+  if (existing && now - existing < LOCK_TTL_MS) {
+    return false // Lock is held
+  }
+  conversationLocks.set(conversationId, now)
+  return true
+}
+
+function releaseLock(conversationId: string): void {
+  conversationLocks.delete(conversationId)
+}
+
+// ── Error counter helpers ───────────────────────────────
+
+/** Increment consecutive error count. If 3+, auto-disable bot and notify owner. */
+async function incrementErrorCounter(
+  supabase: ReturnType<typeof createServiceClient>,
+  conversationId: string,
+  businessId: string
+): Promise<void> {
+  try {
+    // Use RPC or raw update to atomically increment
+    const { data: conv } = await supabase
+      .from('conversations')
+      .select('id, error_count, is_bot_active')
+      .eq('id', conversationId)
+      .single()
+
+    const newCount = (conv?.error_count ?? 0) + 1
+
+    await supabase
+      .from('conversations')
+      .update({ error_count: newCount })
+      .eq('id', conversationId)
+
+    if (newCount >= 3 && conv?.is_bot_active) {
+      // Auto-disable bot
+      await supabase
+        .from('conversations')
+        .update({ is_bot_active: false, error_count: 0 })
+        .eq('id', conversationId)
+
+      // Notify business owner
+      await supabase.from('notifications').insert({
+        business_id: businessId,
+        type: 'system',
+        title: 'בוט כובה אוטומטית',
+        body: ERROR_MESSAGES.BOT_AUTO_DISABLED,
+        metadata: { conversation_id: conversationId, error_count: newCount },
+      })
+
+      console.warn(`[webhook] Bot auto-disabled for conversation ${conversationId} after ${newCount} consecutive errors`)
+    }
+  } catch (counterErr) {
+    // Don't let the error counter itself crash the webhook
+    console.error('[webhook] Failed to update error counter:', counterErr)
+  }
+}
+
+/** Reset error counter on success */
+async function resetErrorCounter(
+  supabase: ReturnType<typeof createServiceClient>,
+  conversationId: string
+): Promise<void> {
+  try {
+    await supabase
+      .from('conversations')
+      .update({ error_count: 0 })
+      .eq('id', conversationId)
+  } catch {
+    // Non-critical, ignore
+  }
+}
 
 export async function POST(req: NextRequest) {
   // WAHA webhooks don't send auth headers by default.
@@ -191,10 +272,18 @@ export async function POST(req: NextRequest) {
 
       // 6. Run AI agent if bot is active
       if (conversation!.is_bot_active) {
+        const convId = conversation!.id
+
+        // ── Mutex: prevent double responses from simultaneous webhooks ──
+        if (!acquireLock(convId)) {
+          console.warn(`[webhook] Conversation ${convId} is already being processed, skipping duplicate`)
+          return NextResponse.json({ ok: true })
+        }
+
         try {
           const aiResponse = await processAIAgent({
             businessId: phone.business_id,
-            conversationId: conversation!.id,
+            conversationId: convId,
             contactId: contact!.id,
             message: messageContent,
             contactName: contact!.name || from,
@@ -204,16 +293,46 @@ export async function POST(req: NextRequest) {
 
           if (aiResponse && aiResponse.text) {
             // Send response via WAHA - use chatId (with @c.us or @lid suffix)
-            await whatsapp.sendMessage(
-              phone.session_id!,
-              chatId,
-              aiResponse.text
-            )
+            try {
+              await whatsapp.sendMessage(
+                phone.session_id!,
+                chatId,
+                aiResponse.text
+              )
+            } catch (sendError) {
+              // WAHA sendMessage failed — save message as 'failed', notify owner
+              console.error('[webhook] WAHA sendMessage failed:', sendError)
 
-            // Save outgoing AI message
+              await supabase.from('messages').insert({
+                business_id: phone.business_id,
+                conversation_id: convId,
+                direction: 'outbound',
+                sender_type: 'ai',
+                type: 'text',
+                content: aiResponse.text,
+                status: 'failed',
+              })
+
+              await supabase.from('notifications').insert({
+                business_id: phone.business_id,
+                type: 'system',
+                title: 'שליחת הודעה נכשלה',
+                body: `לא הצלחנו לשלוח הודעה ללקוח ${contact!.name || from}. בדוק את חיבור הוואטסאפ.`,
+                metadata: {
+                  conversation_id: convId,
+                  contact_id: contact!.id,
+                  error: sendError instanceof Error ? sendError.message : String(sendError),
+                },
+              })
+
+              await incrementErrorCounter(supabase, convId, phone.business_id)
+              return NextResponse.json({ ok: true })
+            }
+
+            // Save outgoing AI message (success)
             await supabase.from('messages').insert({
               business_id: phone.business_id,
-              conversation_id: conversation!.id,
+              conversation_id: convId,
               direction: 'outbound',
               sender_type: 'ai',
               type: 'text',
@@ -224,16 +343,45 @@ export async function POST(req: NextRequest) {
             // Save AI conversation log
             await supabase.from('ai_conversation_logs').insert({
               business_id: phone.business_id,
-              conversation_id: conversation!.id,
+              conversation_id: convId,
               detected_intent: aiResponse.intent,
               ai_response: aiResponse.text,
               confidence: aiResponse.confidence,
               escalated: aiResponse.escalated,
             })
+
+            // Reset error counter on successful response
+            await resetErrorCounter(supabase, convId)
           }
         } catch (aiError) {
           console.error('[webhook] AI agent error:', aiError)
-          // Don't fail the webhook — the message is already saved
+
+          // Send a fallback message to the customer so they aren't left hanging
+          try {
+            await whatsapp.sendMessage(
+              phone.session_id!,
+              chatId,
+              ERROR_MESSAGES.WEBHOOK_FALLBACK
+            )
+
+            // Save the fallback message
+            await supabase.from('messages').insert({
+              business_id: phone.business_id,
+              conversation_id: convId,
+              direction: 'outbound',
+              sender_type: 'ai',
+              type: 'text',
+              content: ERROR_MESSAGES.WEBHOOK_FALLBACK,
+              status: 'sent',
+            })
+          } catch (fallbackError) {
+            console.error('[webhook] Failed to send fallback message:', fallbackError)
+          }
+
+          // Increment error counter (may auto-disable bot)
+          await incrementErrorCounter(supabase, convId, phone.business_id)
+        } finally {
+          releaseLock(convId)
         }
       }
 

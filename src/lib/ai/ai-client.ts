@@ -55,7 +55,9 @@ export async function generateResponse(
   if (!res.ok) {
     const error = await res.text()
     console.error('[AI] OpenRouter error:', error)
-    throw new Error(`AI request failed: ${res.status}`)
+    const err = new Error(`AI request failed: ${res.status}`) as Error & { status: number }
+    err.status = res.status
+    throw err
   }
 
   const data = await res.json()

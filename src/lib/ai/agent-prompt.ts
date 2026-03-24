@@ -327,6 +327,18 @@ CRITICAL: כשהלקוח מאשר קביעת תור ויש לך את כל הפר
 כשצריך להעביר לבעל/ת העסק: { "type": "escalate", "params": {} }`
 }
 
+// ── Error Messages (Hebrew) ─────────────────────────────
+
+export const ERROR_MESSAGES = {
+  GENERIC_FALLBACK: 'סליחה, לא הצלחתי לענות כרגע. נסה שוב בעוד רגע 🙏',
+  RATE_LIMIT: 'יש עומס כרגע, נסה שוב בעוד דקה',
+  WEBHOOK_FALLBACK: 'סליחה, משהו השתבש. ננסה שוב בהודעה הבאה.',
+  TIME_SLOT_CONFLICT: 'השעה הזו כבר תפוסה. רוצה שנמצא שעה אחרת?',
+  UNKNOWN_SERVICE: 'לא מצאתי את השירות הזה. רוצה לבחור מהרשימה?',
+  DB_INSERT_ERROR: 'הייתה תקלה בשמירת התור. ננסה שוב...',
+  BOT_AUTO_DISABLED: 'הבוט נתקל בבעיות חוזרות. כיבינו אותו זמנית — תבדוק בהגדרות.',
+} as const
+
 // ── Action Executor ─────────────────────────────────────
 
 function formatDateHebrew(dateStr: string): string {
@@ -345,6 +357,16 @@ function addMinutesToTimeString(startTime: string, minutes: number): string {
   const hours = Math.floor(totalMinutes / 60) % 24
   const mins = totalMinutes % 60
   return `${datePart}T${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00`
+}
+
+/** Custom error with a customer-facing Hebrew message */
+class ActionError extends Error {
+  customerMessage: string
+  constructor(technicalMessage: string, customerMessage: string) {
+    super(technicalMessage)
+    this.name = 'ActionError'
+    this.customerMessage = customerMessage
+  }
 }
 
 async function executeAction(
@@ -367,7 +389,7 @@ async function executeAction(
         // Validate date: ensure day-of-week matches the date
         const bookDate = new Date(params.date + 'T12:00:00')
         if (isNaN(bookDate.getTime())) {
-          throw new Error('INVALID_DATE: ' + params.date)
+          throw new ActionError('INVALID_DATE: ' + params.date, 'התאריך לא תקין. איזה תאריך מתאים לך?')
         }
 
         // Cross-check: look for the requested time in recent conversation
@@ -409,6 +431,13 @@ async function executeAction(
         let service = services.find((s) => s.name === params.service)
           if (!service) service = services.find((s) => s.name.includes(params.service!) || params.service!.includes(s.name))
           if (!service && services.length === 1) service = services[0]
+
+        if (!service) {
+          throw new ActionError(
+            `UNKNOWN_SERVICE: "${params.service}" not found in ${services.map(s => s.name).join(', ')}`,
+            ERROR_MESSAGES.UNKNOWN_SERVICE
+          )
+        }
 
         if (service) {
           // Round time to valid interval for this service
@@ -477,7 +506,7 @@ async function executeAction(
               metadata: { requesting_contact: input.contactId, existing_appointment: conflictApt.id },
             })
 
-            throw new Error('TIME_SLOT_CONFLICT_SWAP_SENT')
+            throw new ActionError('TIME_SLOT_CONFLICT_SWAP_SENT', 'השעה הזאת תפוסה, שלחתי הודעה ללקוח שקבע כדי לבדוק אם הוא מוכן להחליף. אעדכן אותך! רוצה לבדוק שעה אחרת?')
           }
 
           // Update contact name if we learned it during conversation
@@ -522,9 +551,12 @@ async function executeAction(
 
           if (rpcError) {
             if (rpcError.message?.includes('TIME_SLOT_CONFLICT')) {
-              throw new Error('TIME_SLOT_CONFLICT')
+              throw new ActionError('TIME_SLOT_CONFLICT', ERROR_MESSAGES.TIME_SLOT_CONFLICT)
             }
-            throw rpcError
+            throw new ActionError(
+              `DB insert error: ${rpcError.message}`,
+              ERROR_MESSAGES.DB_INSERT_ERROR
+            )
           }
 
           // RPC already updates contact stats (total_visits + total_revenue)
@@ -599,11 +631,16 @@ async function executeAction(
       if (contactParams.notes) updates.notes = contactParams.notes
 
       if (Object.keys(updates).length > 0) {
-        await supabase
-          .from('contacts')
-          .update(updates)
-          .eq('id', input.contactId)
-          .eq('business_id', input.businessId)
+        try {
+          await supabase
+            .from('contacts')
+            .update(updates)
+            .eq('id', input.contactId)
+            .eq('business_id', input.businessId)
+        } catch (contactUpdateErr) {
+          // Log but don't fail the whole response — contact update is non-critical
+          console.error('[agent] Contact update failed (non-critical):', contactUpdateErr)
+        }
       }
       break
     }
@@ -711,6 +748,7 @@ export async function processAIAgent(
 ): Promise<AgentResponse> {
   const supabase = createServiceClient()
 
+  try {
   // 1. Load business context + contact info in parallel
   const [businessResult, settingsResult, personaResult, historyResult, contactResult] =
     await Promise.all([
@@ -992,17 +1030,22 @@ ${stateResult.aiInstruction}
       const errMsg = err instanceof Error ? err.message : 'שגיאה'
       console.error('[agent] Failed to execute action:', errMsg)
 
-      // If conflict with swap offer sent - override AI response
-      if (errMsg.includes('TIME_SLOT_CONFLICT_SWAP_SENT')) {
+      // Use customer-facing message from ActionError if available
+      if (err instanceof ActionError) {
+        parsed.text = err.customerMessage
+        // Return to collecting_time for time conflicts
+        if (errMsg.includes('TIME_SLOT_CONFLICT')) {
+          await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
+        }
+      } else if (errMsg.includes('TIME_SLOT_CONFLICT_SWAP_SENT')) {
         parsed.text = 'השעה הזאת תפוסה, שלחתי הודעה ללקוח שקבע כדי לבדוק אם הוא מוכן להחליף. אעדכן אותך! רוצה לבדוק שעה אחרת?'
-        // Return to collecting_time so user can pick another slot
         await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
       } else if (errMsg.includes('TIME_SLOT_CONFLICT')) {
-        parsed.text = 'אוי, השעה הזאת כבר תפוסה. רוצה לבדוק שעה אחרת?'
+        parsed.text = ERROR_MESSAGES.TIME_SLOT_CONFLICT
         await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
       } else {
         if (parsed.text === '__BOOKING_PENDING__') {
-          parsed.text = 'סליחה, לא הצלחתי לקבוע את התור. אנסה שוב או שתפנה לעסק ישירות.'
+          parsed.text = ERROR_MESSAGES.DB_INSERT_ERROR
         }
         // Notify business owner about other failures
         await supabase.from('notifications').insert({
@@ -1161,5 +1204,35 @@ ${stateResult.aiInstruction}
     intent: parsed.intent,
     confidence: parsed.confidence,
     escalated: parsed.escalated || false,
+  }
+
+  } catch (outerError) {
+    // ── Top-level error handler for processAIAgent ──
+    const errMsg = outerError instanceof Error ? outerError.message : String(outerError)
+    const errStatus = (outerError as { status?: number }).status
+
+    console.error('[agent] processAIAgent FATAL error:', {
+      error: errMsg,
+      status: errStatus,
+      businessId: input.businessId,
+      conversationId: input.conversationId,
+      contactId: input.contactId,
+      message: input.message.slice(0, 100),
+    })
+
+    // Choose a friendly Hebrew message based on error type
+    let fallbackText: string
+    if (errStatus === 429 || errMsg.includes('429')) {
+      fallbackText = ERROR_MESSAGES.RATE_LIMIT
+    } else {
+      fallbackText = ERROR_MESSAGES.GENERIC_FALLBACK
+    }
+
+    return {
+      text: fallbackText,
+      intent: 'error',
+      confidence: 0,
+      escalated: false,
+    }
   }
 }
