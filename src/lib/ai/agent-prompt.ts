@@ -175,7 +175,12 @@ export function buildSystemPrompt(
 
   return `IMPORTANT: You MUST respond ONLY in Hebrew. Never respond in English.
 
-אתה עובד/ת של "${biz.name || 'העסק'}". אתה בן אדם ישראלי אמיתי שעונה ללקוחות בוואטסאפ.
+## מי אתה:
+אתה עובד/ת אמיתי/ת של "${biz.name || 'העסק'}". דבר כמו בן אדם רגיל שעונה בוואטסאפ.
+לעולם אל תגיד שאתה בוט, AI, מערכת, או רובוט. אם ישאלו — אמור שאתה עובד/ת של העסק.
+תשתמש בשפה חמה וטבעית. קצר, ידידותי, לא רשמי.
+אל תחזור על עצמך. אל תשתמש במשפטים ארוכים. תענה כמו שעונים בוואטסאפ — קצר ולעניין.
+
 דבר כמו ישראלי/ת אמיתי/ת — חם, ישיר, עם הומור קל. כאילו אתה מדבר עם חבר.
 אם בעל העסק מספר, דבר כמו מספרה: "אחי", "כפרה", "שותף", "מלך".
 אם בעלת העסק אישה, דברי כמו: "מאמי", "לב שלי", "חיים שלי", "יופי".
@@ -188,6 +193,7 @@ export function buildSystemPrompt(
 - הודעות קצרות! מקסימום 2-3 שורות. כמו וואטסאפ אמיתי.
 - אם לא יודע - "שנייה בודק/ת ואחזור אליך"
 - תזכור את הלקוח! אם הוא חוזר - "מה קורה ${contactContext?.name || ''}! מה שלומך?" לא כאילו פעם ראשונה.
+- אם יש לך את שם הלקוח מהמערכת — תשתמש בו! תקרא לו בשם, תגרום לו להרגיש שזוכרים אותו.
 - אל תקבע/י תור בזמן שלא פנוי. תמיד תשלח/י action מסוג book_appointment כדי שהמערכת תבדוק אם הזמן פנוי.
 - אם הלקוח/ה רוצה לדבר עם בעל/ת העסק — אמור/י "שנייה מעביר/ה!" וסמן/י escalation
 - נושאים רגישים (תלונות, כסף, בעיות) — תעביר/י לבעל/ת העסק
@@ -476,11 +482,29 @@ async function executeAction(
 
           // Update contact name if we learned it during conversation
           const learnedName = params.contact_name as string | undefined
-          if (learnedName && learnedName.length > 1 && !/^\d+$/.test(learnedName) && !learnedName.startsWith('לקוח')) {
-            await supabase.from('contacts')
-              .update({ name: learnedName })
-              .eq('id', input.contactId)
-            console.log(`[agent] Updated contact ${input.contactId} name to: ${learnedName}`)
+          if (learnedName && learnedName.length > 1) {
+            // Check if the learned name is a real name (not a placeholder/phone number)
+            const isPlaceholder = /^\d+$/.test(learnedName)
+              || /^[\d\s]+$/.test(learnedName)
+              || learnedName.startsWith('לקוח')
+              || learnedName.startsWith('972')
+              || /^\+?\d{7,}/.test(learnedName)
+            if (!isPlaceholder) {
+              // Also update if current contact name looks like a placeholder
+              const currentName = input.contactName || ''
+              const currentIsPlaceholder = /^\d+$/.test(currentName)
+                || /^[\d\s]+$/.test(currentName)
+                || currentName.startsWith('לקוח')
+                || currentName.startsWith('972')
+                || /^\+?\d{7,}/.test(currentName)
+              // Always update if current name is placeholder, or if we have a new real name
+              if (currentIsPlaceholder || learnedName !== currentName) {
+                await supabase.from('contacts')
+                  .update({ name: learnedName })
+                  .eq('id', input.contactId)
+                console.log(`[agent] Updated contact ${input.contactId} name to: ${learnedName}`)
+              }
+            }
           }
 
           // Use atomic RPC to prevent race conditions (advisory lock + conflict check + insert)
@@ -737,11 +761,21 @@ export async function processAIAgent(
   const services = (settingsResult.data?.services as Array<{ name: string; duration: number; price: number }>) || []
 
   // 3. Build extraction prompt - AI only extracts data, doesn't decide
+  // Determine if the contact has a real known name
+  const knownContactName = contactCtx.name || ''
+  const contactNameIsPlaceholder = !knownContactName
+    || /^\d+$/.test(knownContactName)
+    || /^[\d\s]+$/.test(knownContactName)
+    || knownContactName.startsWith('לקוח')
+    || knownContactName.startsWith('972')
+    || /^\+?\d{7,}/.test(knownContactName)
+
   const extractionPrompt = `IMPORTANT: Respond ONLY in valid JSON. Extract information from the user's message.
 You are extracting data for a booking system for "${businessResult.data?.name || 'business'}".
 
 Available services: ${services.map(s => s.name).join(', ')}
 Current booking step: ${bookingState.step}
+${!contactNameIsPlaceholder ? `Known customer name from DB: ${knownContactName} (use this as the name if the customer doesn't provide a different one)` : 'Customer name is NOT known yet — extract it from the message if mentioned.'}
 Today: ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
 
 Day lookup (next occurrence of each day):

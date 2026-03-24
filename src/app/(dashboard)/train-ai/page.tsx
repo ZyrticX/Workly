@@ -470,8 +470,7 @@ export default function TrainAiPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white rounded-[var(--radius-button)] press-effect transition-ios disabled:opacity-50"
-              style={{ backgroundColor: 'var(--color-primary)' }}
+              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white rounded-[var(--radius-button)] press-effect transition-ios disabled:opacity-50 btn-primary"
             >
               {saving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -496,7 +495,7 @@ export default function TrainAiPage() {
           <span className="text-xs font-medium text-[#8FA89A]">
             שלב {step} מתוך {TOTAL_STEPS}
           </span>
-          <span className="text-xs font-bold" style={{ color: 'var(--color-primary)' }}>
+          <span className="text-xs font-bold text-primary-dynamic">
             {Math.round((step / TOTAL_STEPS) * 100)}%
           </span>
         </div>
@@ -505,6 +504,21 @@ export default function TrainAiPage() {
             className="h-full rounded-full transition-all duration-700 ease-out bg-primary-dynamic"
             style={{ width: `${(step / TOTAL_STEPS) * 100}%` }}
           />
+        </div>
+        {/* Step dots */}
+        <div className="flex items-center justify-center gap-2 mt-3">
+          {Array.from({ length: TOTAL_STEPS }, (_, i) => (
+            <div
+              key={i}
+              className={`w-2 h-2 rounded-full transition-all duration-300 ${
+                i + 1 === step
+                  ? 'bg-primary-dynamic w-4'
+                  : i + 1 < step
+                    ? 'bg-primary-dynamic opacity-40'
+                    : 'bg-[#E8EFE9]'
+              }`}
+            />
+          ))}
         </div>
       </div>
 
@@ -537,7 +551,7 @@ export default function TrainAiPage() {
       </div>
 
       {/* Bottom Navigation */}
-      <div className="mt-8 mb-4">
+      <div className="mt-4 mb-4">
         <div className="flex items-center gap-3">
           {step > 1 && (
             <button
@@ -598,7 +612,7 @@ function Step1({
               key={opt.value}
               onClick={() => setBusinessGoal(opt.value)}
               className={cn(
-                'relative glass-card rounded-[var(--radius-card)] shadow-ios p-5 text-center transition-all duration-300 press-effect',
+                'relative glass-card rounded-[var(--radius-card)] shadow-ios p-4 text-center transition-all duration-300 press-effect',
                 'flex flex-col items-center gap-2.5',
                 'hover:shadow-ios-lg hover:-translate-y-0.5',
                 selected
@@ -613,8 +627,7 @@ function Step1({
               </span>
               {selected && (
                 <div
-                  className="absolute top-2.5 left-2.5 w-6 h-6 rounded-full flex items-center justify-center shadow-ios"
-                  style={{ backgroundColor: 'var(--color-primary)' }}
+                  className="absolute top-2.5 left-2.5 w-6 h-6 rounded-full flex items-center justify-center shadow-ios bg-primary-dynamic"
                 >
                   <Check className="w-3.5 h-3.5 text-white" />
                 </div>

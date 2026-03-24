@@ -88,7 +88,7 @@ export function AppointmentBlock({ appointment, variant, onRefresh }: Appointmen
             </span>
           </div>
         </div>
-        <div className="text-xs mt-0.5 opacity-75">{appointment.service_type}</div>
+        <div className={`text-xs mt-0.5 opacity-75 ${isCancelled ? 'line-through' : ''}`}>{appointment.service_type}</div>
       </button>
 
       {showDetail && (

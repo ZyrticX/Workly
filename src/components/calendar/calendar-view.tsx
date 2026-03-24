@@ -108,12 +108,21 @@ function formatDisplayDate(date: Date, mode: ViewMode): string {
   return `${first.getDate()} - ${last.getDate()} ${HEBREW_MONTHS[last.getMonth()]} ${last.getFullYear()}`
 }
 
+type StatusFilter = 'active' | 'all' | 'cancelled'
+
+const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
+  active: 'פעילים',
+  all: 'הכל',
+  cancelled: 'בוטלו',
+}
+
 export function CalendarView({ initialDate }: CalendarViewProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('daily')
   const [currentDate, setCurrentDate] = useState(() => new Date(initialDate + 'T00:00:00'))
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [loading, setLoading] = useState(false)
   const [showNewSheet, setShowNewSheet] = useState(false)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
 
   const fetchAppointments = useCallback(async (date: Date, mode: ViewMode) => {
     setLoading(true)
@@ -166,16 +175,26 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
     setCurrentDate(new Date())
   }
 
+  function filterByStatus(list: Appointment[]): Appointment[] {
+    if (statusFilter === 'active') {
+      return list.filter((a) => a.status === 'confirmed' || a.status === 'scheduled')
+    }
+    if (statusFilter === 'cancelled') {
+      return list.filter((a) => a.status === 'cancelled')
+    }
+    return list
+  }
+
   function getAppointmentsForDate(dateKey: string): Appointment[] {
-    return appointments.filter((a) => a.start_time.slice(0, 10) === dateKey && a.status !== 'cancelled')
+    return filterByStatus(appointments.filter((a) => a.start_time.slice(0, 10) === dateKey))
   }
 
   function getAppointmentsForSlot(time: string): Appointment[] {
-    return appointments.filter((a) => {
+    return filterByStatus(appointments.filter((a) => {
       const t = new Date(a.start_time)
       const hhmm = `${String(t.getHours()).padStart(2, '0')}:${String(t.getMinutes()).padStart(2, '0')}`
       return hhmm === time
-    })
+    }))
   }
 
   const timeSlots = generateTimeSlots()
@@ -245,13 +264,30 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
         </div>
       </div>
 
+      {/* Status Filter Tabs */}
+      <div className="flex gap-2 justify-end">
+        {(['active', 'all', 'cancelled'] as StatusFilter[]).map((filter) => (
+          <button
+            key={filter}
+            onClick={() => setStatusFilter(filter)}
+            className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all ${
+              statusFilter === filter
+                ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                : 'bg-white text-[#6B7B73] border border-[#E8EFE9] hover:bg-[#F7FAF8]'
+            }`}
+          >
+            {STATUS_FILTER_LABELS[filter]}
+          </button>
+        ))}
+      </div>
+
       {/* Calendar Content */}
       <div className="bg-white rounded-xl border border-[#E8EFE9] overflow-hidden">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-3 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" aria-label="טוען תורים" />
           </div>
-        ) : viewMode === 'daily' && appointments.length === 0 ? (
+        ) : viewMode === 'daily' && filterByStatus(appointments).length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 px-6">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--color-primary)]/10">
               <CalendarPlus className="w-8 h-8 text-[var(--color-primary)]" />
@@ -405,7 +441,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
                                 return (
                                 <div
                                   key={apt.id}
-                                  className="text-[10px] sm:text-xs truncate px-1 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary-dark)]"
+                                  className={`text-[10px] sm:text-xs truncate px-1 py-0.5 rounded bg-[var(--color-primary)]/10 text-[var(--color-primary-dark)] ${apt.status === 'cancelled' ? 'opacity-50 line-through' : ''}`}
                                 >
                                   {hhmm} {apt.contacts?.name || apt.contact_name}
                                 </div>

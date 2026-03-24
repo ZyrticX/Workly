@@ -64,8 +64,14 @@ export function processState(
       }
     }
 
-    // Use known name from DB
-    const hasName = contactName && !/^\d+$/.test(contactName) && contactName !== 'לקוח' && !contactName.startsWith('972')
+    // Use known name from DB — but only if it's a real name, not a placeholder
+    const isPlaceholderName = !contactName
+      || /^\d+$/.test(contactName)
+      || /^[\d\s]+$/.test(contactName)
+      || contactName.startsWith('לקוח')
+      || contactName.startsWith('972')
+      || /^\+?\d{7,}/.test(contactName)
+    const hasName = contactName && !isPlaceholderName
     if (extracted.name) state.name = extracted.name
     else if (hasName) state.name = contactName
 

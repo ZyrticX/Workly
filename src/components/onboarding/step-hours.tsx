@@ -105,8 +105,8 @@ export default function StepHours({ initialSchedule, onChange }: StepHoursProps)
                 aria-label={`${day.dayHe} - ${day.active ? 'פעיל' : 'לא פעיל'}`}
               >
                 <span
-                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
-                    day.active ? 'start-0.5' : 'start-[22px]'
+                  className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-all duration-200 ${
+                    day.active ? 'start-[calc(100%-22px)]' : 'start-0.5'
                   }`}
                 />
               </button>

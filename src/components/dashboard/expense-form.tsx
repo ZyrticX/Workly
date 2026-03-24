@@ -331,7 +331,7 @@ export default function ExpenseForm({ onClose, onSaved }: ExpenseFormProps) {
                   onChange={(e) => setIsRecurring(e.target.checked)}
                   className="peer sr-only"
                 />
-                <div className="h-6 w-11 rounded-full bg-gray-200 after:absolute after:start-[2px] after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:transition-all peer-checked:bg-[var(--color-primary)] peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full" />
+                <div className="h-6 w-11 rounded-full bg-gray-200 relative after:absolute after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all after:start-[2px] peer-checked:after:start-[calc(100%-22px)] peer-checked:bg-[var(--color-primary)]" />
               </label>
             </div>
 

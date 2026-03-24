@@ -263,7 +263,7 @@ function WorkingHoursSection({
                   onChange={(e) => updateDay(key, { active: e.target.checked })}
                   className="peer sr-only"
                 />
-                <div className="h-6 w-11 rounded-full bg-gray-200 relative after:absolute after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all after:right-[2px] peer-checked:after:right-[calc(100%-22px)] peer-checked:bg-[var(--color-primary)]" />
+                <div className="h-6 w-11 rounded-full bg-gray-200 relative after:absolute after:top-[2px] after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow-sm after:transition-all after:start-[2px] peer-checked:after:start-[calc(100%-22px)] peer-checked:bg-[var(--color-primary)]" />
               </label>
               <span className="min-w-[50px] text-sm font-medium text-gray-700">
                 {label}
