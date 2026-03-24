@@ -218,6 +218,12 @@ export default async function DashboardPage() {
             ))}
           </div>
         )}
+        <Link
+          href="/calendar"
+          className="block text-center text-xs text-[var(--color-primary-dark)] font-medium mt-3 py-2 hover:underline"
+        >
+          היסטוריית תורים →
+        </Link>
       </div>
     </div>
   )

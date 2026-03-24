@@ -3,7 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 // ── Types ──────────────────────────────────────────
 
 export interface BookingState {
-  step: 'idle' | 'collecting_service' | 'collecting_name' | 'collecting_date' | 'collecting_time' | 'collecting_notes' | 'confirming' | 'cancelling' | 'rescheduling'
+  step: 'idle' | 'collecting_service' | 'collecting_name' | 'collecting_date' | 'collecting_time' | 'collecting_notes' | 'confirming' | 'cancelling' | 'rescheduling' | 'waitlist_offer'
   service?: string
   serviceDuration?: number
   servicePrice?: number
@@ -241,6 +241,31 @@ export function processState(
     } else {
       aiInstruction = buildConfirmationInstruction(state) + ' הלקוח לא אישר עדיין, שאל שוב בעדינות אם מאשר.'
       return { newState: state, aiInstruction, action }
+    }
+  }
+
+  // ── Waitlist offer ──
+  if (state.step === 'waitlist_offer') {
+    if (extracted.confirmation === true || extracted.intent === 'confirm') {
+      action = {
+        type: 'add_to_waitlist',
+        params: {
+          date: state.date,
+          service: state.service,
+          contact_name: state.name,
+        }
+      }
+      skipAI = true
+      aiInstruction = `אין בעיה ${state.name}! הוספתי אותך לרשימת ההמתנה ל${state.service} ביום ${getDayName(state.date!)}. ברגע שיתפנה מקום - נודיע לך מיד 🙏`
+      return { newState: { step: 'idle' }, aiInstruction, action, skipAI }
+    } else if (extracted.confirmation === false || extracted.intent === 'deny') {
+      state.date = undefined
+      state.step = 'collecting_date'
+      aiInstruction = `בסדר, אין בעיה. רוצה לנסות יום אחר?`
+      return { newState: state, aiInstruction, action: null }
+    } else {
+      aiInstruction = `אין תורים פנויים ביום הזה. רוצה שאוסיף אותך לרשימת ההמתנה? ברגע שיתפנה מקום נודיע לך.`
+      return { newState: state, aiInstruction, action: null }
     }
   }
 

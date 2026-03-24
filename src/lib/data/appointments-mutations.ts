@@ -159,16 +159,28 @@ export async function cancelAppointment(
         .update({ status: 'offered' })
         .eq('id', entry.id)
 
-      // TODO: Send WhatsApp message when WAHA provider is configured
-      // const phone = await getBusinessPhone(appointment.business_id)
-      // await whatsapp.sendMessage(
-      //   phone.session_id!,
-      //   entry.contacts.wa_id,
-      //   `היי ${entry.contacts.name}! התפנה תור ב-${time}. מתאים לך?`
-      // )
-      console.log(
-        `[Waitlist] Offered slot at ${time} to contact ${entry.contact_id}`
-      )
+      // Send WhatsApp notification to waitlisted contact
+      try {
+        const { data: bizPhone } = await supabase
+          .from('phone_numbers')
+          .select('session_id')
+          .eq('business_id', appointment.business_id)
+          .eq('status', 'connected')
+          .limit(1)
+          .single()
+
+        if (bizPhone?.session_id && entry.contacts?.wa_id) {
+          const { whatsapp } = await import('@/lib/waha/provider')
+          await whatsapp.sendMessage(
+            bizPhone.session_id,
+            entry.contacts.wa_id,
+            `היי ${entry.contacts.name}! 🎉\nהתפנה תור ב-${time}.\nרוצה לקבוע? פשוט שלח/י "כן" ונסדר!`
+          )
+        }
+      } catch (err) {
+        console.error(`[Waitlist] Failed to send WhatsApp to ${entry.contact_id}:`, err)
+      }
+      console.log(`[Waitlist] Offered slot at ${time} to contact ${entry.contact_id}`)
     }
   }
 

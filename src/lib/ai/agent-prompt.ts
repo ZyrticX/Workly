@@ -656,6 +656,25 @@ async function executeAction(
       break
     }
 
+    case 'add_to_waitlist': {
+      await supabase.from('waitlist').insert({
+        business_id: input.businessId,
+        contact_id: input.contactId,
+        preferred_date: action.params.date,
+        service_type: action.params.service,
+        status: 'waiting',
+      })
+
+      await supabase.from('notifications').insert({
+        business_id: input.businessId,
+        type: 'waitlist',
+        title: 'נוסף לרשימת המתנה',
+        body: `${action.params.contact_name || input.contactName} נוסף/ה לרשימת המתנה ל${action.params.service} ב${action.params.date}`,
+        metadata: { contact_id: input.contactId, date: action.params.date, service: action.params.service },
+      })
+      break
+    }
+
     default:
       console.warn(`Unknown action type: ${action.type}`)
   }

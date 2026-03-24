@@ -37,7 +37,7 @@ export default function DashboardLayout({
 
             <div
               className={
-                'mx-auto max-w-lg px-4 py-6 pb-24 min-h-[calc(100dvh-3.5rem)] ' +
+                'mx-auto max-w-lg px-4 pt-4 pb-24 min-h-[calc(100dvh-3.5rem)] ' +
                 'lg:max-w-full lg:px-8 lg:py-8 lg:pb-8 lg:min-h-screen'
               }
             >
