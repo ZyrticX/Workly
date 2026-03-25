@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 // Paths that don't require auth
-const PUBLIC_PATHS = ['/login', '/register', '/api/webhooks', '/api/cron', '/admin/login']
+const PUBLIC_PATHS = ['/login', '/register', '/api/webhooks', '/api/cron', '/admin-login']
 
 // Paths that skip onboarding check
 const SKIP_ONBOARDING_CHECK = ['/onboarding', '/api/', '/login', '/register', '/admin']

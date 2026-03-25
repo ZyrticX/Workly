@@ -18,11 +18,11 @@ export default async function AdminLayout({
   const { data: { user } } = await supabase.auth.getUser()
 
   if (!user) {
-    redirect('/admin/login')
+    redirect('/admin-login')
   }
 
   if (!user.email || !ALLOWED_ADMIN_EMAILS.includes(user.email)) {
-    redirect('/admin/login')
+    redirect('/admin-login')
   }
 
   return (
