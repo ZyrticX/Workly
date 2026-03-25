@@ -37,11 +37,11 @@ const VIEW_LABELS: Record<ViewMode, string> = {
   monthly: 'חודשי',
 }
 
-function generateTimeSlots(): string[] {
+function generateTimeSlots(startHour = 9, endHour = 22): string[] {
   const slots: string[] = []
-  for (let h = 6; h <= 22; h++) {
+  for (let h = startHour; h <= endHour; h++) {
     slots.push(`${String(h).padStart(2, '0')}:00`)
-    if (h < 22) {
+    if (h < endHour) {
       slots.push(`${String(h).padStart(2, '0')}:30`)
     }
   }
@@ -189,14 +189,23 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
     return filterByStatus(appointments.filter((a) => a.start_time.slice(0, 10) === dateKey))
   }
 
-  function getAppointmentsForSlot(time: string): Appointment[] {
+  function getAppointmentsForSlot(slotTime: string): Appointment[] {
     const dateKey = formatDateKey(currentDate)
+    // Parse slot start into total minutes
+    const [slotH, slotM] = slotTime.split(':').map(Number)
+    const slotStart = slotH * 60 + slotM
+    const slotEnd = slotStart + 30
+
     return filterByStatus(appointments.filter((a) => {
-      // Extract HH:MM directly from naive timestamp string (no timezone conversion)
       const startStr = a.start_time as string
-      if (!startStr.startsWith(dateKey)) return false
-      const hhmm = startStr.substring(11, 16) // "2026-03-25 09:45:00" → "09:45"
-      return hhmm === time
+      // Match the date portion (handles both "T" and " " separator at index 10)
+      if (startStr.slice(0, 10) !== dateKey) return false
+      // Extract HH:MM from position 11..16 → e.g. "09:45"
+      const hhmm = startStr.substring(11, 16)
+      const [aH, aM] = hhmm.split(':').map(Number)
+      const aptMinutes = aH * 60 + aM
+      // Appointment belongs to this slot if its start time falls within [slotStart, slotEnd)
+      return aptMinutes >= slotStart && aptMinutes < slotEnd
     }))
   }
 

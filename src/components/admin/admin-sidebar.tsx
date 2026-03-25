@@ -106,15 +106,25 @@ export function AdminSidebar() {
         </div>
       </div>
 
-      {/* Mobile Drawer */}
-      {mobileOpen && (
-        <>
-          <div className="lg:hidden fixed inset-0 bg-black/50 z-40" onClick={() => setMobileOpen(false)} />
-          <aside className="lg:hidden fixed top-0 start-0 h-screen w-72 bg-[#1B2E24] text-white flex flex-col z-50 shadow-2xl">
-            <NavContent />
-          </aside>
-        </>
-      )}
+      {/* Mobile Drawer Overlay */}
+      <div
+        className={cn(
+          'lg:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300',
+          mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        )}
+        onClick={() => setMobileOpen(false)}
+      />
+
+      {/* Mobile Drawer - slides in from the right in RTL */}
+      <aside
+        className={cn(
+          'lg:hidden fixed top-0 right-0 h-screen w-72 bg-[#1B2E24] text-white flex flex-col z-50 shadow-2xl',
+          'transition-transform duration-300 ease-in-out',
+          mobileOpen ? 'translate-x-0' : 'translate-x-full'
+        )}
+      >
+        <NavContent />
+      </aside>
     </>
   )
 }

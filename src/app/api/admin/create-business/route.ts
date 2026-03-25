@@ -17,6 +17,7 @@ export async function POST(req: NextRequest) {
     businessName,
     ownerName,
     ownerEmail,
+    ownerPassword,
     ownerPhone,
     businessType,
     description,
@@ -27,20 +28,22 @@ export async function POST(req: NextRequest) {
     notes = '', // Internal notes
   } = body
 
-  if (!businessName || !ownerEmail || !businessType) {
-    return NextResponse.json({ error: 'שם עסק, אימייל ונוג עסק הם שדות חובה' }, { status: 400 })
+  if (!businessName || !ownerEmail || !ownerPhone || !businessType) {
+    return NextResponse.json({ error: 'שם עסק, אימייל, טלפון וסוג עסק הם שדות חובה' }, { status: 400 })
   }
+
+  // Use provided password or generate a temporary one
+  const password = ownerPassword || `Temp${Date.now()}!${Math.random().toString(36).slice(2, 8)}`
 
   const supabase = createServiceClient()
 
   try {
-    // 1. Create auth user (with random password — owner will reset)
-    const tempPassword = `Temp${Date.now()}!${Math.random().toString(36).slice(2, 8)}`
+    // 1. Create auth user
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: ownerEmail,
-      password: tempPassword,
+      password,
       email_confirm: true,
-      user_metadata: { full_name: ownerName || businessName },
+      user_metadata: { full_name: ownerName || businessName, phone: ownerPhone },
     })
 
     if (authError) {
@@ -130,8 +133,8 @@ export async function POST(req: NextRequest) {
       success: true,
       businessId,
       userId,
-      tempPassword,
-      message: `עסק "${businessName}" נוצר בהצלחה. סיסמה זמנית: ${tempPassword}`,
+      tempPassword: password,
+      message: `עסק "${businessName}" נוצר בהצלחה`,
     })
   } catch (err) {
     console.error('[admin] create-business error:', err)

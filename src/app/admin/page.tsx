@@ -84,17 +84,17 @@ export default async function AdminDashboardPage() {
   const data = await getAdminDashboardData()
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 lg:space-y-8">
       {/* Page Title */}
-      <div>
-        <h2 className="text-xl font-bold text-text">סקירה כללית</h2>
+      <div className="bg-white rounded-2xl border border-border px-6 py-5">
+        <h2 className="text-xl font-bold text-[#1B2E24]">סקירה כללית</h2>
         <p className="text-sm text-text-muted mt-1">
           מבט על מצב הפלטפורמה
         </p>
       </div>
 
-      {/* Stat Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      {/* Stat Cards - 2 cols on mobile, 3 on md, 6 on xl */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 lg:gap-4">
         <AdminStatCard
           label="עסקים"
           value={data.totalBusinesses}
@@ -151,9 +151,9 @@ export default async function AdminDashboardPage() {
           }
         />
         <AdminStatCard
-          label="מנותקים"
+          label="דורשים טיפול"
           value={data.disconnectedList.length}
-          sublabel="דורשים טיפול"
+          sublabel="התראות פעילות"
           color="warning"
           icon={
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
@@ -163,46 +163,25 @@ export default async function AdminDashboardPage() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Recent Signups */}
-        <div className="bg-white rounded-2xl border border-border p-6">
-          <h3 className="text-sm font-semibold text-text mb-4">
-            הרשמות אחרונות
-          </h3>
-          {data.recentSignups.length === 0 ? (
-            <p className="text-sm text-text-muted">אין הרשמות אחרונות</p>
-          ) : (
-            <div className="space-y-3">
-              {data.recentSignups.map((biz) => (
-                <div
-                  key={biz.id}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-surface"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-text">{biz.name}</p>
-                    <p className="text-[11px] text-text-muted">
-                      {biz.business_type || 'לא צוין'} &middot; {biz.plan}
-                    </p>
-                  </div>
-                  <span className="text-[11px] text-text-muted">
-                    {new Date(biz.created_at).toLocaleDateString('he-IL')}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
+      {/* Bottom cards - equal height, aligned */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
         {/* Disconnected Phones Alert */}
-        <div className="bg-white rounded-2xl border border-border p-6">
+        <div className="bg-white rounded-2xl border border-border p-5 lg:p-6 flex flex-col">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
-            <h3 className="text-sm font-semibold text-text">
+            {data.disconnectedList.length > 0 && (
+              <div className="w-2 h-2 rounded-full bg-danger animate-pulse" />
+            )}
+            <h3 className="text-sm font-semibold text-[#1B2E24]">
               התראות מנותקים
             </h3>
+            {data.disconnectedList.length > 0 && (
+              <span className="text-[11px] font-medium text-danger bg-danger-bg px-2 py-0.5 rounded-md mr-auto">
+                {data.disconnectedList.length}
+              </span>
+            )}
           </div>
           {data.disconnectedList.length === 0 ? (
-            <div className="text-center py-8">
+            <div className="text-center py-8 flex-1 flex flex-col items-center justify-center">
               <div className="w-12 h-12 rounded-full bg-success-bg flex items-center justify-center mx-auto mb-3">
                 <svg className="w-6 h-6 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
@@ -211,27 +190,56 @@ export default async function AdminDashboardPage() {
               <p className="text-sm text-text-muted">כל המספרים מחוברים</p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 flex-1">
               {data.disconnectedList.map((phone) => (
                 <div
                   key={phone.id}
                   className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-danger-bg/50"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-danger" />
-                    <div>
-                      <p className="text-sm font-mono font-medium text-text">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-2 h-2 rounded-full bg-danger shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-mono font-medium text-[#1B2E24] truncate">
                         {phone.phone_number}
                       </p>
-                      <p className="text-[11px] text-text-muted">
+                      <p className="text-[11px] text-text-muted truncate">
                         {phone.session_id || 'ללא session'}
                         {phone.last_health_check &&
-                          ` · בדיקה: ${new Date(phone.last_health_check).toLocaleString('he-IL')}`}
+                          ` · ${new Date(phone.last_health_check).toLocaleString('he-IL')}`}
                       </p>
                     </div>
                   </div>
-                  <span className="text-[11px] font-medium text-danger px-2 py-0.5 rounded-md bg-danger-bg">
+                  <span className="text-[11px] font-medium text-danger px-2 py-0.5 rounded-md bg-danger-bg shrink-0 mr-2">
                     מנותק
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Recent Signups */}
+        <div className="bg-white rounded-2xl border border-border p-5 lg:p-6 flex flex-col">
+          <h3 className="text-sm font-semibold text-[#1B2E24] mb-4">
+            הרשמות אחרונות
+          </h3>
+          {data.recentSignups.length === 0 ? (
+            <p className="text-sm text-text-muted flex-1 flex items-center justify-center">אין הרשמות אחרונות</p>
+          ) : (
+            <div className="space-y-2 flex-1">
+              {data.recentSignups.map((biz) => (
+                <div
+                  key={biz.id}
+                  className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-surface gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-[#1B2E24] truncate">{biz.name}</p>
+                    <p className="text-[11px] text-text-muted truncate">
+                      {biz.business_type || 'לא צוין'} &middot; {biz.plan}
+                    </p>
+                  </div>
+                  <span className="text-[11px] text-text-muted whitespace-nowrap shrink-0">
+                    {new Date(biz.created_at).toLocaleDateString('he-IL')}
                   </span>
                 </div>
               ))}

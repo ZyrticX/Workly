@@ -21,13 +21,38 @@ import Link from 'next/link'
 const HEBREW_DAYS = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'] as const
 
 function hebrewDayName(dateStr: string): string {
-  const d = new Date(dateStr)
+  // Parse date parts directly from the ISO string to avoid timezone shifts
+  // dateStr is a naive timestamp like "2026-03-26T06:30:00" (Israel local time)
+  const [datePart] = dateStr.split('T')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const d = new Date(year, month - 1, day)
   return `יום ${HEBREW_DAYS[d.getDay()]}`
 }
 
 function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr)
-  return `${d.getDate()}/${d.getMonth() + 1}`
+  // Parse date parts directly from the ISO string to avoid timezone shifts
+  const [datePart] = dateStr.split('T')
+  const [, month, day] = datePart.split('-').map(Number)
+  return `${day}/${month}`
+}
+
+/** Returns true if the name looks like a raw phone number (e.g. "972533555148") */
+function looksLikePhoneNumber(name: string): boolean {
+  return /^\d{7,15}$/.test(name) || /^972\d+$/.test(name)
+}
+
+/** Display name for a contact — shows formatted phone or fallback if name is a raw number */
+function displayContactName(name: string): string {
+  if (!name || name === 'לא ידוע') return 'לקוח ללא שם'
+  if (looksLikePhoneNumber(name)) {
+    // Format 972XXXXXXXXX as 0XX-XXX-XXXX
+    if (name.startsWith('972') && name.length >= 12) {
+      const local = '0' + name.slice(3)
+      return `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`
+    }
+    return name
+  }
+  return name
 }
 
 function timeAgo(dateStr: string): string {
@@ -82,9 +107,12 @@ async function getDashboardData() {
 
   const businessId = bu.business_id
   const now = new Date()
+  // Use naive date strings (no Z suffix) to match DB naive timestamps (Israel local time)
   const today = now.toISOString().split('T')[0]
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-  const startOfWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+  const startOfMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01T00:00:00`
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0) // last day of current month
+  const endOfMonthStr = `${endOfMonth.getFullYear()}-${String(endOfMonth.getMonth() + 1).padStart(2, '0')}-${String(endOfMonth.getDate()).padStart(2, '0')}T23:59:59`
+  const startOfWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] + 'T00:00:00'
 
   // Calculate end of week (7 days from today)
   const endOfWeekDate = new Date(now)
@@ -109,7 +137,7 @@ async function getDashboardData() {
       .select('id, start_time, service_type, status, contacts(name)')
       .eq('business_id', businessId)
       .in('status', ['confirmed', 'pending'])
-      .gte('start_time', now.toISOString())
+      .gte('start_time', `${today}T00:00:00`)
       .lte('start_time', `${today}T23:59:59`)
       .order('start_time', { ascending: true }),
     supabase
@@ -117,35 +145,40 @@ async function getDashboardData() {
       .select('price')
       .eq('business_id', businessId)
       .eq('status', 'completed')
-      .gte('start_time', startOfMonth),
+      .gte('start_time', startOfMonth)
+      .lte('start_time', endOfMonthStr),
     supabase
       .from('contacts')
       .select('id', { count: 'exact' })
       .eq('business_id', businessId)
       .gte('created_at', startOfWeek),
+    // Cancelled appointments this month only
     supabase
       .from('appointments')
       .select('id', { count: 'exact' })
       .eq('business_id', businessId)
       .eq('status', 'cancelled')
-      .gte('start_time', startOfMonth),
+      .gte('start_time', startOfMonth)
+      .lte('start_time', endOfMonthStr),
+    // Total appointments this month (all statuses) for cancellation rate
     supabase
       .from('appointments')
       .select('id', { count: 'exact' })
       .eq('business_id', businessId)
-      .gte('start_time', startOfMonth),
+      .gte('start_time', startOfMonth)
+      .lte('start_time', endOfMonthStr),
     supabase
       .from('phone_numbers')
       .select('status')
       .eq('business_id', businessId)
       .single(),
-    // Week appointments: all confirmed/pending from now through end of week
+    // Week appointments: all confirmed/pending from today through end of week
     supabase
       .from('appointments')
       .select('id, start_time, service_type, status, contacts(name)', { count: 'exact' })
       .eq('business_id', businessId)
       .in('status', ['confirmed', 'pending'])
-      .gte('start_time', now.toISOString())
+      .gte('start_time', `${today}T00:00:00`)
       .lte('start_time', `${endOfWeek}T23:59:59`)
       .order('start_time', { ascending: true })
       .limit(5),
@@ -180,7 +213,7 @@ async function getDashboardData() {
     id: apt.id,
     startTime: apt.start_time as string,
     time: (apt.start_time as string).substring(11, 16),
-    contactName: apt.contacts?.name || 'לא ידוע',
+    contactName: displayContactName(apt.contacts?.name || ''),
     service: apt.service_type || '',
     status: apt.status as 'confirmed' | 'pending',
   }))
@@ -198,7 +231,7 @@ async function getDashboardData() {
   // Today's cancellations
   const todayCancellations = (todayCancelledRes.data || []).map((apt: any) => ({
     id: apt.id as string,
-    contactName: apt.contacts?.name || 'לא ידוע',
+    contactName: displayContactName(apt.contacts?.name || ''),
   }))
 
   return {
@@ -213,7 +246,7 @@ async function getDashboardData() {
     upcomingAppointments: todayAppointments.map((apt: any) => ({
       id: apt.id,
       time: (apt.start_time as string).substring(11, 16),
-      contactName: apt.contacts?.name || 'לא ידוע',
+      contactName: displayContactName(apt.contacts?.name || ''),
       service: apt.service_type || '',
       status: apt.status as 'confirmed' | 'pending' | 'cancelled',
     })),

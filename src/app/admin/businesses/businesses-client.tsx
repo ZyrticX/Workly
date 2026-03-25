@@ -68,15 +68,12 @@ const statusColors: Record<string, string> = {
 
 // ── Business Type Options ──
 const businessTypes = [
-  { value: 'barbershop', label: 'מספרה / ספרות' },
-  { value: 'beauty', label: 'קוסמטיקה / יופי' },
-  { value: 'nails', label: 'ציפורניים' },
-  { value: 'fitness', label: 'כושר / מאמן אישי' },
-  { value: 'health', label: 'בריאות / טיפול' },
-  { value: 'accounting', label: 'רואה חשבון / ייעוץ מס' },
-  { value: 'law', label: 'עורך דין' },
-  { value: 'restaurant', label: 'מסעדה / קפה' },
-  { value: 'education', label: 'חינוך / שיעורים פרטיים' },
+  { value: 'barbershop', label: 'מספרה' },
+  { value: 'beauty', label: 'קוסמטיקה' },
+  { value: 'fitness', label: 'כושר' },
+  { value: 'health', label: 'רפואה' },
+  { value: 'accounting', label: 'רואה חשבון' },
+  { value: 'restaurant', label: 'מסעדה' },
   { value: 'other', label: 'אחר' },
 ]
 
@@ -86,6 +83,7 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
     businessName: '',
     ownerName: '',
     ownerEmail: '',
+    ownerPassword: '',
     ownerPhone: '',
     businessType: '',
     description: '',
@@ -100,8 +98,12 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
   const [result, setResult] = useState<{ tempPassword: string; businessId: string } | null>(null)
 
   const handleSubmit = async () => {
-    if (!form.businessName || !form.ownerEmail || !form.businessType) {
-      setError('שם עסק, אימייל וסוג עסק הם שדות חובה')
+    if (!form.businessName || !form.ownerEmail || !form.ownerPassword || !form.ownerPhone || !form.businessType) {
+      setError('שם עסק, אימייל, סיסמה, טלפון וסוג עסק הם שדות חובה')
+      return
+    }
+    if (form.ownerPassword.length < 6) {
+      setError('סיסמה חייבת להכיל לפחות 6 תווים')
       return
     }
     setSaving(true)
@@ -143,7 +145,7 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-2">
             <p className="text-sm font-semibold text-amber-800">פרטי התחברות (שמור!):</p>
             <p className="text-sm text-amber-700">אימייל: <span className="font-mono font-bold">{form.ownerEmail}</span></p>
-            <p className="text-sm text-amber-700">סיסמה זמנית: <span className="font-mono font-bold">{result.tempPassword}</span></p>
+            <p className="text-sm text-amber-700">סיסמה: <span className="font-mono font-bold">{result.tempPassword}</span></p>
           </div>
           <button
             onClick={() => { onCreated(); onClose() }}
@@ -196,7 +198,7 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
 
           {/* Owner Email */}
           <div>
-            <label className="block text-sm font-medium text-[#1B2E24] mb-1">אימייל בעל העסק *</label>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">מייל *</label>
             <input
               type="email"
               value={form.ownerEmail}
@@ -207,9 +209,22 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
             />
           </div>
 
+          {/* Password */}
+          <div>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">סיסמה *</label>
+            <input
+              type="text"
+              value={form.ownerPassword}
+              onChange={e => updateField('ownerPassword', e.target.value)}
+              placeholder="לפחות 6 תווים"
+              dir="ltr"
+              className="w-full px-4 py-3 rounded-xl border border-[#E8EFE9] text-base font-mono focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
+            />
+          </div>
+
           {/* Owner Phone */}
           <div>
-            <label className="block text-sm font-medium text-[#1B2E24] mb-1">טלפון</label>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">מספר טלפון *</label>
             <input
               type="tel"
               value={form.ownerPhone}

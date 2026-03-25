@@ -25,6 +25,7 @@ import {
   QrCode,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { TimeInput } from '@/components/ui/time-input'
 
 // ── Types ──────────────────────────────────────────────
 
@@ -270,18 +271,16 @@ function WorkingHoursSection({
               </span>
               {day.active && (
                 <div className="flex items-center gap-2 text-sm">
-                  <input
-                    type="time"
+                  <TimeInput
                     value={day.start}
-                    onChange={(e) => updateDay(key, { start: e.target.value })}
-                    className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+                    onChange={(v) => updateDay(key, { start: v })}
+                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1 text-sm text-center"
                   />
                   <span className="text-gray-400">—</span>
-                  <input
-                    type="time"
+                  <TimeInput
                     value={day.end}
-                    onChange={(e) => updateDay(key, { end: e.target.value })}
-                    className="rounded-md border border-gray-200 px-2 py-1 text-sm"
+                    onChange={(v) => updateDay(key, { end: v })}
+                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1 text-sm text-center"
                   />
                   <button
                     type="button"
@@ -298,18 +297,16 @@ function WorkingHoursSection({
                 {day.breaks.map((brk, idx) => (
                   <div key={idx} className="flex items-center gap-2 text-xs text-gray-500">
                     <span>הפסקה:</span>
-                    <input
-                      type="time"
+                    <TimeInput
                       value={brk.start}
-                      onChange={(e) => updateBreak(key, idx, 'start', e.target.value)}
-                      className="rounded border border-gray-200 px-1.5 py-0.5 text-xs"
+                      onChange={(v) => updateBreak(key, idx, 'start', v)}
+                      className="w-[64px] rounded border border-gray-200 px-1.5 py-0.5 text-xs text-center"
                     />
                     <span>—</span>
-                    <input
-                      type="time"
+                    <TimeInput
                       value={brk.end}
-                      onChange={(e) => updateBreak(key, idx, 'end', e.target.value)}
-                      className="rounded border border-gray-200 px-1.5 py-0.5 text-xs"
+                      onChange={(v) => updateBreak(key, idx, 'end', v)}
+                      className="w-[64px] rounded border border-gray-200 px-1.5 py-0.5 text-xs text-center"
                     />
                     <button
                       type="button"

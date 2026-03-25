@@ -81,8 +81,26 @@ interface ConversationRowProps {
   onClick: (id: string) => void
 }
 
+/** Returns true if the name looks like a raw phone number */
+function looksLikePhoneNumber(name: string): boolean {
+  return /^\d{7,15}$/.test(name) || /^972\d+$/.test(name)
+}
+
+/** Format a raw phone-number name into a readable display name */
+function formatContactDisplayName(name: string | undefined | null): string {
+  if (!name) return 'ללא שם'
+  if (looksLikePhoneNumber(name)) {
+    if (name.startsWith('972') && name.length >= 12) {
+      const local = '0' + name.slice(3)
+      return `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`
+    }
+    return name
+  }
+  return name
+}
+
 function ConversationRow({ conversation, isActive, onClick }: ConversationRowProps) {
-  const contactName = conversation.contacts?.name || 'ללא שם'
+  const contactName = formatContactDisplayName(conversation.contacts?.name)
   const color = getAvatarColor(contactName)
   const initials = getInitials(contactName)
   const lastMsg = conversation.lastMessage

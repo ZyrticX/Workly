@@ -40,12 +40,31 @@ function formatDate(dateStr: string): string {
   })
 }
 
+/** Returns true if the name looks like a raw phone number */
+function looksLikePhoneNumber(name: string): boolean {
+  return /^\d{7,15}$/.test(name) || /^972\d+$/.test(name)
+}
+
+/** Format a raw phone-number name into a readable display name */
+function formatContactDisplayName(name: string): string {
+  if (!name) return 'לקוח ללא שם'
+  if (looksLikePhoneNumber(name)) {
+    if (name.startsWith('972') && name.length >= 12) {
+      const local = '0' + name.slice(3)
+      return `${local.slice(0, 3)}-${local.slice(3, 6)}-${local.slice(6)}`
+    }
+    return name
+  }
+  return name
+}
+
 interface ContactCardProps {
   contact: ContactCardData
 }
 
 export function ContactCard({ contact }: ContactCardProps) {
   const statusCfg = STATUS_CONFIG[contact.status] ?? STATUS_CONFIG.new
+  const displayName = formatContactDisplayName(contact.name)
 
   return (
     <Link
@@ -53,13 +72,13 @@ export function ContactCard({ contact }: ContactCardProps) {
       className="block glass-card shadow-ios rounded-2xl p-4 hover:shadow-ios-lg hover:border-[var(--color-primary)]/30 transition-all active:scale-[0.99]"
     >
       <div className="flex items-start gap-3">
-        <AvatarInitials name={contact.name} size="md" />
+        <AvatarInitials name={displayName} size="md" />
 
         <div className="flex-1 min-w-0">
           {/* Row 1: Name + Badge */}
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#1B2E24] text-base truncate">
-              {contact.name}
+              {displayName}
             </span>
             <StatusBadge variant={statusCfg.variant}>
               {statusCfg.label}
