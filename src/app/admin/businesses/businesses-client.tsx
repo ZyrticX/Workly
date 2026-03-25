@@ -47,6 +47,8 @@ const statusLabels: Record<string, string> = {
   active: 'פעיל',
   suspended: 'מושעה',
   trial: 'ניסיון',
+  lead: 'פוטנציאלי',
+  onboarding: 'בהקמה',
 }
 
 const planColors: Record<string, string> = {
@@ -60,6 +62,8 @@ const statusColors: Record<string, string> = {
   active: 'bg-success-bg text-success',
   suspended: 'bg-danger-bg text-danger',
   trial: 'bg-warning-bg text-warning',
+  lead: 'bg-amber-100 text-amber-700',
+  onboarding: 'bg-blue-100 text-blue-700',
 }
 
 // ── Business Type Options ──
@@ -86,6 +90,7 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
     businessType: '',
     description: '',
     howItWorks: '',
+    clientStatus: 'active' as 'lead' | 'active',
     plan: 'trial',
   })
   const [saving, setSaving] = useState(false)
@@ -211,6 +216,37 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
               dir="ltr"
               className="w-full px-4 py-3 rounded-xl border border-[#E8EFE9] text-base focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
             />
+          </div>
+
+          {/* Client Status */}
+          <div>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">סטטוס לקוח</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => updateField('clientStatus', 'active')}
+                className={cn(
+                  'flex-1 py-3 rounded-xl text-sm font-medium border transition-all flex items-center justify-center gap-2',
+                  form.clientStatus === 'active'
+                    ? 'border-green-500 bg-green-50 text-green-700'
+                    : 'border-[#E8EFE9] text-[#6B7B73] hover:border-gray-300'
+                )}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
+                לקוח פעיל
+              </button>
+              <button
+                onClick={() => updateField('clientStatus', 'lead')}
+                className={cn(
+                  'flex-1 py-3 rounded-xl text-sm font-medium border transition-all flex items-center justify-center gap-2',
+                  form.clientStatus === 'lead'
+                    ? 'border-amber-500 bg-amber-50 text-amber-700'
+                    : 'border-[#E8EFE9] text-[#6B7B73] hover:border-gray-300'
+                )}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                לקוח פוטנציאלי
+              </button>
+            </div>
           </div>
 
           {/* Business Type */}

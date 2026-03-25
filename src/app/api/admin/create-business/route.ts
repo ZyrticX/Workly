@@ -22,6 +22,7 @@ export async function POST(req: NextRequest) {
     description,
     howItWorks,
     plan = 'trial',
+    clientStatus = 'active', // 'lead' | 'active'
   } = body
 
   if (!businessName || !ownerEmail || !businessType) {
@@ -58,7 +59,7 @@ export async function POST(req: NextRequest) {
         owner_user_id: userId,
         business_type: businessType,
         plan,
-        status: 'onboarding',
+        status: clientStatus === 'lead' ? 'lead' : 'onboarding',
       })
       .select('id')
       .single()
