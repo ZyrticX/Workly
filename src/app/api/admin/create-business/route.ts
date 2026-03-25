@@ -23,6 +23,8 @@ export async function POST(req: NextRequest) {
     howItWorks,
     plan = 'trial',
     clientStatus = 'active', // 'lead' | 'active'
+    assignedTo = '', // Who manages this client
+    notes = '', // Internal notes
   } = body
 
   if (!businessName || !ownerEmail || !businessType) {
@@ -78,6 +80,8 @@ export async function POST(req: NextRequest) {
     const aiConfig: Record<string, unknown> = {}
     if (description) aiConfig.description = description
     if (howItWorks) aiConfig.how_it_works = howItWorks
+    if (assignedTo) aiConfig.assigned_to = assignedTo
+    if (notes) aiConfig.internal_notes = notes
 
     await supabase.from('business_settings').insert({
       business_id: businessId,

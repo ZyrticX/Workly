@@ -91,6 +91,8 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
     description: '',
     howItWorks: '',
     clientStatus: 'active' as 'lead' | 'active',
+    assignedTo: '',
+    notes: '',
     plan: 'trial',
   })
   const [saving, setSaving] = useState(false)
@@ -262,6 +264,39 @@ function NewBusinessForm({ onClose, onCreated }: { onClose: () => void; onCreate
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+          </div>
+
+          {/* Assigned To */}
+          <div>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">אחראי / בטיפול של</label>
+            <div className="flex flex-wrap gap-2">
+              {['אורי', 'אלעד', 'דניאל', 'יבגני', 'איליה'].map(name => (
+                <button
+                  key={name}
+                  onClick={() => updateField('assignedTo', form.assignedTo === name ? '' : name)}
+                  className={cn(
+                    'px-4 py-2.5 rounded-xl text-sm font-medium border transition-all',
+                    form.assignedTo === name
+                      ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-primary-dark)]'
+                      : 'border-[#E8EFE9] text-[#6B7B73] hover:border-gray-300'
+                  )}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Internal Notes */}
+          <div>
+            <label className="block text-sm font-medium text-[#1B2E24] mb-1">הערות פנימיות</label>
+            <textarea
+              value={form.notes}
+              onChange={e => updateField('notes', e.target.value)}
+              placeholder="הערות לשימוש פנימי בלבד..."
+              rows={2}
+              className="w-full px-4 py-3 rounded-xl border border-[#E8EFE9] text-base resize-none focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30"
+            />
           </div>
 
           {/* Description */}
