@@ -26,11 +26,11 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-[#F7FAF8]" dir="rtl">
+    <div className="min-h-screen bg-[#F0F4F1]" dir="rtl">
       <AdminSidebar />
-      <div className="lg:me-60">
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E8EFE9]">
-          <div className="px-4 lg:px-8 py-4 flex items-center justify-between">
+      <div className="lg:me-60 pt-[52px] lg:pt-0">
+        <header className="hidden lg:block sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E8EFE9]">
+          <div className="px-8 py-4 flex items-center justify-between">
             <h1 className="text-lg font-bold text-[#1B2E24]">פאנל ניהול</h1>
             <span className="text-xs text-[#8FA89A]">{user.email}</span>
           </div>
