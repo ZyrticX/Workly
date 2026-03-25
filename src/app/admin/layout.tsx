@@ -6,6 +6,7 @@ const ALLOWED_ADMIN_EMAILS = [
   'smartmindsai31@gmail.com',
   'evgeniy.orel@open-israel.co.il',
   'test@admin.com',
+  'workly@admin.com',
 ]
 
 export default async function AdminLayout({
