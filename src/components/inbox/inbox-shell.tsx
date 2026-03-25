@@ -34,7 +34,7 @@ export function InboxShell({ initialConversations }: InboxShellProps) {
   ) ?? null
 
   return (
-    <div className="flex h-full overflow-hidden rounded-xl border border-[#E8EFE9] bg-white max-w-full overflow-x-hidden">
+    <div className="flex h-full overflow-hidden rounded-xl border border-[#E8EFE9] bg-white max-w-full">
       {/* ── Conversation List Panel ── */}
       <div
         className={cn(

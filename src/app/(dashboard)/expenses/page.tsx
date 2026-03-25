@@ -254,7 +254,7 @@ export default function ExpensesPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-full bg-[#F7FAF8]">
+    <div dir="rtl" className="min-h-full bg-[#F7FAF8] overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 border-b border-gray-200 bg-white/80 backdrop-blur-md px-4 py-4">
         <div className="mx-auto max-w-2xl">
@@ -307,7 +307,7 @@ export default function ExpensesPage() {
         </div>
 
         {/* Summary cards */}
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <SummaryCard
             label="הכנסות"
             value={monthRevenue}
@@ -334,7 +334,7 @@ export default function ExpensesPage() {
             type="button"
             onClick={() => setTab('one_time')}
             className={cn(
-              'flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all',
+              'flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all min-h-[44px]',
               tab === 'one_time'
                 ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                 : 'text-gray-500 hover:text-gray-700'
@@ -347,7 +347,7 @@ export default function ExpensesPage() {
             type="button"
             onClick={() => setTab('recurring')}
             className={cn(
-              'flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all',
+              'flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-medium transition-all min-h-[44px]',
               tab === 'recurring'
                 ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'
                 : 'text-gray-500 hover:text-gray-700'

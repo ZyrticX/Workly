@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
+// TODO: Data cleanup — stale notification/contact records (one-time SQL):
+//   UPDATE contacts SET name = 'יבגני' WHERE name LIKE '%8734%';
+//   DELETE FROM notifications WHERE title LIKE '%8734%' OR title LIKE '%972533555148%';
+//   -- Or run: DELETE FROM notifications WHERE created_at < NOW() - INTERVAL '30 days';
+
 export async function GET() {
   try {
     const supabase = await createClient()

@@ -84,7 +84,7 @@ export default async function AdminDashboardPage() {
   const data = await getAdminDashboardData()
 
   return (
-    <div className="space-y-6 lg:space-y-8">
+    <div className="space-y-6 lg:space-y-8 overflow-x-hidden">
       {/* Page Title */}
       <div className="bg-white rounded-2xl border border-border px-6 py-5">
         <h2 className="text-xl font-bold text-[#1B2E24]">סקירה כללית</h2>

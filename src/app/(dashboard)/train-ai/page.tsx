@@ -462,7 +462,7 @@ export default function TrainAiPage() {
           <div className="max-w-lg mx-auto flex items-center gap-3 px-4 py-3">
             <button
               onClick={goBack}
-              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-[var(--color-text-secondary)] rounded-[var(--radius-button)] hover:bg-[var(--color-surface)] transition-colors press-effect"
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-[var(--color-text-secondary)] rounded-[var(--radius-button)] hover:bg-[var(--color-surface)] transition-colors press-effect min-h-[48px]"
             >
               <ArrowRight className="w-4 h-4" />
               חזרה
@@ -470,7 +470,7 @@ export default function TrainAiPage() {
             <button
               onClick={handleSave}
               disabled={saving}
-              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white rounded-[var(--radius-button)] press-effect transition-ios disabled:opacity-50 btn-primary"
+              className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-semibold text-white rounded-[var(--radius-button)] press-effect transition-ios disabled:opacity-50 btn-primary min-h-[48px]"
             >
               {saving ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -556,7 +556,7 @@ export default function TrainAiPage() {
           {step > 1 && (
             <button
               onClick={goBack}
-              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-[#5A6E62] rounded-xl hover:bg-[#F7FAF8] transition-colors"
+              className="flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-[#5A6E62] rounded-xl hover:bg-[#F7FAF8] transition-colors min-h-[48px]"
             >
               <ArrowRight className="w-4 h-4" />
               הקודם
@@ -566,7 +566,7 @@ export default function TrainAiPage() {
             onClick={goNext}
             disabled={!canGoNext()}
             className={cn(
-              'flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold rounded-xl shadow-sm transition-all btn-primary',
+              'flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-semibold rounded-xl shadow-sm transition-all btn-primary min-h-[48px]',
               !canGoNext() && 'opacity-40 cursor-not-allowed'
             )}
           >
@@ -604,7 +604,7 @@ function Step1({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-3">
         {GOAL_OPTIONS.map(opt => {
           const selected = businessGoal === opt.value
           return (
@@ -762,7 +762,7 @@ function Step3({
               {upsells.length > 1 && (
                 <button
                   onClick={() => removeUpsell(upsell.id)}
-                  className="p-1.5 rounded-lg text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors"
+                  className="p-2 rounded-lg text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -960,7 +960,7 @@ function Step5({
                 {faqs.length > 1 && (
                   <button
                     onClick={() => removeFaq(faq.id)}
-                    className="p-1.5 rounded-lg text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors"
+                    className="p-2 rounded-lg text-[var(--color-danger)] hover:bg-[var(--color-danger-bg)] transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>

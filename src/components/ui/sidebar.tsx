@@ -42,7 +42,7 @@ const secondaryNavItems: SidebarItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { businessName } = useAuth()
+  const { businessName, loading } = useAuth()
 
   function isActive(href: string): boolean {
     if (href === '/') return pathname === '/'
@@ -58,11 +58,15 @@ export function Sidebar() {
         'py-6 px-3'
       )}
     >
-      {/* Logo + Notifications */}
+      {/* Logo + Business Name */}
       <div className="flex items-center justify-between px-3 mb-8">
         <div className="flex items-center gap-2">
           <img src="/logo.png" alt="" className="h-9 w-9 rounded-xl object-contain shadow-ios" />
-          <span className="text-sm font-bold text-text truncate">{businessName || 'העסק שלי'}</span>
+          {loading ? (
+            <span className="inline-block h-4 w-20 rounded bg-[var(--color-border)] animate-pulse" />
+          ) : (
+            <span className="text-sm font-bold text-text truncate">{businessName || 'העסק שלי'}</span>
+          )}
         </div>
         <NotificationsBell />
       </div>

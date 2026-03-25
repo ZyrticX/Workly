@@ -256,7 +256,7 @@ function WorkingHoursSection({
         const day = hours[key] || { active: false, start: '09:00', end: '18:00', breaks: [] }
         return (
           <div key={key} className="rounded-lg border border-gray-100 p-3">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <label className="relative inline-flex cursor-pointer items-center min-h-[44px]">
                 <input
                   type="checkbox"
@@ -270,22 +270,22 @@ function WorkingHoursSection({
                 {label}
               </span>
               {day.active && (
-                <div className="flex items-center gap-2 text-sm">
+                <div className="flex items-center gap-2 text-sm flex-wrap">
                   <TimeInput
                     value={day.start}
                     onChange={(v) => updateDay(key, { start: v })}
-                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1 text-sm text-center"
+                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1.5 text-sm text-center min-h-[40px]"
                   />
                   <span className="text-gray-400">—</span>
                   <TimeInput
                     value={day.end}
                     onChange={(v) => updateDay(key, { end: v })}
-                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1 text-sm text-center"
+                    className="w-[72px] rounded-md border border-gray-200 px-2 py-1.5 text-sm text-center min-h-[40px]"
                   />
                   <button
                     type="button"
                     onClick={() => addBreak(key)}
-                    className="ms-2 text-xs text-[var(--color-primary)] hover:underline"
+                    className="ms-2 text-xs text-[var(--color-primary)] hover:underline min-h-[44px] px-2"
                   >
                     + הפסקה
                   </button>
@@ -293,9 +293,9 @@ function WorkingHoursSection({
               )}
             </div>
             {day.active && day.breaks.length > 0 && (
-              <div className="mt-2 me-14 space-y-1">
+              <div className="mt-2 sm:me-14 space-y-1">
                 {day.breaks.map((brk, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs text-gray-500">
+                  <div key={idx} className="flex items-center gap-2 text-xs text-gray-500 flex-wrap">
                     <span>הפסקה:</span>
                     <TimeInput
                       value={brk.start}
@@ -367,7 +367,7 @@ function ServicesSection({
       {services.map((svc, idx) => (
         <div
           key={idx}
-          className="grid grid-cols-[1fr_80px_80px_32px] gap-2 items-end rounded-lg border border-gray-100 p-3"
+          className="grid grid-cols-[1fr_64px_64px_40px] sm:grid-cols-[1fr_80px_80px_40px] gap-2 items-end rounded-lg border border-gray-100 p-3"
         >
           <div>
             <label className="mb-1 block text-xs text-gray-500">שם השירות</label>
@@ -815,7 +815,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div dir="rtl" className="min-h-full bg-mesh">
+    <div dir="rtl" className="min-h-full bg-mesh overflow-x-hidden">
       {/* Header */}
       <div className="sticky top-0 z-10 glass-strong shadow-ios px-4 py-4">
         <div className="mx-auto max-w-2xl">

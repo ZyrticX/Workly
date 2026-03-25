@@ -87,7 +87,7 @@ export function ContactsList() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {/* Search & Filter Bar */}
       <div className="bg-white rounded-xl border border-[#E8EFE9] p-4 space-y-3">
         <div className="flex gap-2">
@@ -107,7 +107,7 @@ export function ContactsList() {
           <div className="relative">
             <button
               onClick={() => setShowSortDropdown(!showSortDropdown)}
-              className="p-2.5 border border-[#E8EFE9] rounded-lg hover:bg-[#F7FAF8] transition-colors"
+              className="p-2.5 border border-[#E8EFE9] rounded-lg hover:bg-[#F7FAF8] transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
               aria-label="מיון"
             >
               <SlidersHorizontal className="w-4 h-4 text-[#6B7B73]" />
@@ -148,7 +148,7 @@ export function ContactsList() {
             <button
               key={opt.value}
               onClick={() => handleStatusChange(opt.value)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-full border whitespace-nowrap transition-all ${
+              className={`px-3 py-2 text-xs font-medium rounded-full border whitespace-nowrap transition-all min-h-[36px] ${
                 statusFilter === opt.value
                   ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
                   : 'bg-white text-[#6B7B73] border-[#E8EFE9] hover:border-[var(--color-primary)]/50'
@@ -212,7 +212,7 @@ export function ContactsList() {
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page === 1}
-            className="p-2 rounded-lg border border-[#E8EFE9] hover:bg-[#F7FAF8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="p-2 rounded-lg border border-[#E8EFE9] hover:bg-[#F7FAF8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="עמוד קודם"
           >
             <ChevronRight className="w-4 h-4 text-[#6B7B73]" />
@@ -223,7 +223,7 @@ export function ContactsList() {
           <button
             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
-            className="p-2 rounded-lg border border-[#E8EFE9] hover:bg-[#F7FAF8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            className="p-2 rounded-lg border border-[#E8EFE9] hover:bg-[#F7FAF8] disabled:opacity-40 disabled:cursor-not-allowed transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center"
             aria-label="עמוד הבא"
           >
             <ChevronLeft className="w-4 h-4 text-[#6B7B73]" />

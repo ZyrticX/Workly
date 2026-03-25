@@ -285,7 +285,7 @@ export default async function DashboardPage() {
   }
 
   return (
-    <div className="min-h-full space-y-6">
+    <div className="min-h-full space-y-6 overflow-x-hidden">
       {/* Greeting + WhatsApp Status */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <h1 className="text-xl font-bold text-[var(--color-text)]">
@@ -349,7 +349,7 @@ export default async function DashboardPage() {
             <p className="text-sm font-semibold text-red-600">
               {data.todayCancellations.length} ביטולים היום
             </p>
-            <p className="text-xs text-red-500/80 mt-0.5">
+            <p className="text-xs text-red-500/80 mt-0.5 truncate">
               {data.todayCancellations.map(c => c.contactName).join(', ')}
             </p>
           </div>
@@ -418,9 +418,9 @@ export default async function DashboardPage() {
             {data.weekAppointments.map((apt) => (
               <div
                 key={apt.id}
-                className="glass-card shadow-ios rounded-2xl p-4 flex items-center gap-3 transition-ios hover:shadow-ios-lg"
+                className="glass-card shadow-ios rounded-2xl p-3 sm:p-4 flex items-center gap-2 sm:gap-3 transition-ios hover:shadow-ios-lg"
               >
-                <div className="min-w-[70px] text-center">
+                <div className="min-w-[56px] sm:min-w-[70px] text-center shrink-0">
                   <p className="text-[11px] font-medium text-[var(--color-text-muted)]">
                     {hebrewDayName(apt.startTime)}
                   </p>

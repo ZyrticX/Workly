@@ -212,7 +212,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
   const timeSlots = generateTimeSlots()
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 overflow-x-hidden">
       {/* Header Controls */}
       <div className="bg-white rounded-xl border border-[#E8EFE9] p-4">
         {/* Row 1: View mode + New appointment */}
@@ -222,7 +222,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-all min-h-[36px] ${
+                className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-md transition-all min-h-[44px] ${
                   viewMode === mode
                     ? 'bg-[var(--color-primary)] text-white shadow-sm'
                     : 'text-[#6B7B73] hover:text-[#1B2E24]'
@@ -282,7 +282,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
           <button
             key={filter}
             onClick={() => setStatusFilter(filter)}
-            className={`px-4 py-1.5 text-xs sm:text-sm font-medium rounded-full transition-all ${
+            className={`px-4 py-2 text-xs sm:text-sm font-medium rounded-full transition-all min-h-[44px] ${
               statusFilter === filter
                 ? 'bg-[var(--color-primary)] text-white shadow-sm'
                 : 'bg-white text-[#6B7B73] border border-[#E8EFE9] hover:bg-[#F7FAF8]'
@@ -294,7 +294,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
       </div>
 
       {/* Calendar Content */}
-      <div className="bg-white rounded-xl border border-[#E8EFE9] overflow-hidden">
+      <div className="bg-white rounded-xl border border-[#E8EFE9] overflow-hidden overflow-x-auto">
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <div className="w-8 h-8 border-3 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" aria-label="טוען תורים" />

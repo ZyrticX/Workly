@@ -91,7 +91,6 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
     <>
       {/* Header + Add Button */}
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold text-[#1B2E24]">עסקים ({businesses.length})</h1>
         <Link
           href="/admin/businesses/new"
           className="flex items-center gap-2 px-4 py-2.5 btn-primary text-white text-sm font-semibold rounded-xl"
@@ -99,6 +98,7 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
           לקוח חדש
         </Link>
+        <h1 className="text-xl font-bold text-[#1B2E24]">עסקים ({businesses.length})</h1>
       </div>
 
       {/* Filters */}
@@ -161,7 +161,7 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
       {/* Table */}
       <div className="bg-white rounded-2xl border border-border overflow-hidden">
         <div className="overflow-x-auto">
-          <div className="overflow-x-auto"><table className="w-full text-sm min-w-[600px]">
+          <table className="w-full text-sm min-w-[600px]">
             <thead>
               <tr className="border-b border-border bg-surface/50">
                 <th className="text-start px-4 py-3 font-semibold text-text-muted text-xs">
@@ -258,7 +258,7 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
                 ))
               )}
             </tbody>
-          </table></div>
+          </table>
         </div>
       </div>
 
