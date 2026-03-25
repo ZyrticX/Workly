@@ -7,6 +7,9 @@ const PUBLIC_PATHS = ['/login', '/register', '/api/webhooks', '/api/cron']
 // Paths that skip onboarding check
 const SKIP_ONBOARDING_CHECK = ['/onboarding', '/api/', '/login', '/register', '/admin']
 
+// Admin-only emails (pure admin users without a business)
+const ADMIN_ONLY_EMAILS = ['workly@admin.com', 'test@admin.com']
+
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
   const pathname = request.nextUrl.pathname
@@ -41,7 +44,14 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // 2. Logged in → check if onboarding is complete (except skip paths)
+  // 2. Admin-only user on non-admin page → redirect to /admin
+  if (user && user.email && ADMIN_ONLY_EMAILS.includes(user.email) && !pathname.startsWith('/admin') && !pathname.startsWith('/api') && !pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/admin'
+    return NextResponse.redirect(url)
+  }
+
+  // 3. Logged in → check if onboarding is complete (except skip paths)
   if (user && !SKIP_ONBOARDING_CHECK.some(p => pathname.startsWith(p))) {
     try {
       const { data: bu } = await supabase
@@ -50,8 +60,13 @@ export async function updateSession(request: NextRequest) {
         .eq('user_id', user.id)
         .single()
 
-      // No business at all → send to onboarding
+      // No business at all → send to onboarding (unless admin)
       if (!bu) {
+        if (user.email && ADMIN_ONLY_EMAILS.includes(user.email)) {
+          const url = request.nextUrl.clone()
+          url.pathname = '/admin'
+          return NextResponse.redirect(url)
+        }
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)
