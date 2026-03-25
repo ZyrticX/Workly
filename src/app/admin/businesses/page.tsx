@@ -4,6 +4,7 @@ import { BusinessesClient } from './businesses-client'
 async function getBusinesses() {
   const supabase = createServiceClient()
 
+  // Fetch businesses with related data (no profiles table - get email separately)
   const { data: businesses, error } = await supabase
     .from('businesses')
     .select(`
@@ -21,10 +22,7 @@ async function getBusinesses() {
       ),
       business_users (
         user_id,
-        role,
-        profiles:user_id (
-          email
-        )
+        role
       ),
       billing_accounts (
         plan,
@@ -34,6 +32,36 @@ async function getBusinesses() {
       )
     `)
     .order('created_at', { ascending: false })
+
+  // Fetch owner emails from auth.users via business_users
+  const ownerEmails: Record<string, string> = {}
+  if (businesses) {
+    const ownerUserIds = businesses
+      .flatMap((b: any) => (b.business_users as any[] || []))
+      .filter((bu: any) => bu.role === 'owner')
+      .map((bu: any) => bu.user_id)
+
+    if (ownerUserIds.length > 0) {
+      const { data: users } = await supabase
+        .from('auth.users' as any)
+        .select('id, email')
+        .in('id', ownerUserIds)
+
+      // Fallback: query business_users with owner_user_id from businesses table
+      if (!users) {
+        for (const biz of businesses) {
+          const ownerId = (biz as any).owner_user_id
+          if (ownerId) {
+            ownerEmails[biz.id] = ownerId
+          }
+        }
+      } else {
+        for (const u of users as any[]) {
+          ownerEmails[u.id] = u.email
+        }
+      }
+    }
+  }
 
   if (error) {
     console.error('Error fetching businesses:', error)
@@ -45,8 +73,7 @@ async function getBusinesses() {
     const ownerUser = (biz.business_users as any[])?.find(
       (bu: any) => bu.role === 'owner'
     )
-    const ownerEmail =
-      ownerUser?.profiles?.email ?? ownerUser?.profiles?.[0]?.email ?? null
+    const ownerEmail = ownerUser ? ownerEmails[ownerUser.user_id] ?? null : null
 
     // Extract primary phone
     const primaryPhone = (biz.phone_numbers as any[])?.[0] ?? null

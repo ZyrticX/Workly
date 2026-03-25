@@ -4,15 +4,25 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { cn } from '@/lib/utils/cn'
+import {
+  LayoutDashboard,
+  Building2,
+  Smartphone,
+  HeartPulse,
+  CreditCard,
+  Wallet,
+  FileText,
+  LogOut,
+} from 'lucide-react'
 
 const navItems = [
-  { label: 'ראשי', href: '/admin', icon: '📊' },
-  { label: 'עסקים', href: '/admin/businesses', icon: '🏢' },
-  { label: 'מספרים', href: '/admin/phones', icon: '📱' },
-  { label: 'בריאות', href: '/admin/health', icon: '🛡️' },
-  { label: 'סימים', href: '/admin/sims', icon: '💳' },
-  { label: 'חיובים', href: '/admin/billing', icon: '💰' },
-  { label: 'לוגים', href: '/admin/logs', icon: '📋' },
+  { label: 'ראשי', href: '/admin', icon: LayoutDashboard },
+  { label: 'עסקים', href: '/admin/businesses', icon: Building2 },
+  { label: 'מספרים', href: '/admin/phones', icon: Smartphone },
+  { label: 'בריאות', href: '/admin/health', icon: HeartPulse },
+  { label: 'סימים', href: '/admin/sims', icon: CreditCard },
+  { label: 'חיובים', href: '/admin/billing', icon: Wallet },
+  { label: 'לוגים', href: '/admin/logs', icon: FileText },
 ]
 
 export function AdminSidebar() {
@@ -58,7 +68,7 @@ export function AdminSidebar() {
                 : 'text-white/70 hover:bg-white/5 hover:text-white'
             )}
           >
-            <span className="text-lg">{item.icon}</span>
+            <item.icon className="w-5 h-5 shrink-0" />
             <span>{item.label}</span>
           </Link>
         ))}
@@ -70,7 +80,7 @@ export function AdminSidebar() {
           onClick={handleLogout}
           className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-red-400 hover:bg-white/5 transition-colors"
         >
-          <span className="text-lg">🚪</span>
+          <LogOut className="w-5 h-5 shrink-0" />
           <span>התנתק</span>
         </button>
       </div>

@@ -28,7 +28,7 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-[#F0F4F1]" dir="rtl">
       <AdminSidebar />
-      <div className="lg:me-60 pt-[52px] lg:pt-0">
+      <div className="lg:ms-60 pt-[52px] lg:pt-0">
         <header className="hidden lg:block sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-[#E8EFE9]">
           <div className="px-8 py-4 flex items-center justify-between">
             <h1 className="text-lg font-bold text-[#1B2E24]">פאנל ניהול</h1>
