@@ -206,7 +206,7 @@ export function buildSystemPrompt(
   business: Record<string, unknown> | null,
   settings: Record<string, unknown> | null,
   persona: Record<string, unknown> | null,
-  contactContext?: { name: string; status: string; phone: string; visits: number },
+  contactContext?: { name: string; status: string; phone: string; visits: number; gender?: string | null },
   advancedConfig?: AdvancedAIConfig | null
 ): string {
   const biz = business || {}
@@ -1033,8 +1033,9 @@ ${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unk
   }
 
   // 5.5 Auto-update gender if detected and not already known
-  if ((extracted as Record<string, unknown>).gender && !contactCtx.gender) {
-    const detectedGender = (extracted as Record<string, unknown>).gender as string
+  const extractedAny = extracted as unknown as Record<string, unknown>
+  if (extractedAny.gender && !contactCtx.gender) {
+    const detectedGender = extractedAny.gender as string
     if (['male', 'female'].includes(detectedGender)) {
       contactCtx.gender = detectedGender
       supabase.from('contacts').update({ gender: detectedGender }).eq('id', input.contactId).then(() => {})
