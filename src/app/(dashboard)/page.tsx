@@ -106,6 +106,13 @@ async function getDashboardData() {
   if (!bu) return null
 
   const businessId = bu.business_id
+
+  // Auto-complete past appointments (lightweight, runs on every dashboard load)
+  try {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://auto-crm.org'
+    fetch(`${appUrl}/api/cron/auto-complete`).catch(() => {})
+  } catch { /* fire and forget */ }
+
   const now = new Date()
   // Use naive date strings (no Z suffix) to match DB naive timestamps (Israel local time)
   const today = now.toISOString().split('T')[0]
