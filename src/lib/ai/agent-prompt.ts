@@ -585,7 +585,7 @@ async function executeAction(
             price: number
           }>) || []
         let service = services.find((s) => s.name === params.service)
-          if (!service) service = services.find((s) => s.name.includes(params.service!) || params.service!.includes(s.name))
+          if (!service && params.service) service = services.find((s) => s.name.includes(params.service!) || params.service!.includes(s.name))
           if (!service && services.length === 1) service = services[0]
 
         if (!service) {
@@ -872,7 +872,7 @@ async function executeAction(
       if (rParams.date && rParams.time && rParams.service) {
         const services = (settings?.services as Array<{ name: string; duration: number; price: number }>) || []
         let service = services.find((s) => s.name === rParams.service)
-        if (!service) service = services.find((s) => s.name.includes(rParams.service!) || rParams.service!.includes(s.name))
+        if (!service && rParams.service) service = services.find((s) => s.name.includes(rParams.service!) || rParams.service!.includes(s.name))
         if (!service && services.length === 1) service = services[0]
         if (service) {
           // Save Israel time directly (no timezone conversion)

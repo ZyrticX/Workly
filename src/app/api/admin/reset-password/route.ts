@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { createClient } from '@/lib/supabase/server'
+import { verifyAdmin } from '@/lib/auth/admin-guard'
 
 export async function POST(req: NextRequest) {
-  // Verify admin auth
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+  const auth = await verifyAdmin()
+  if (auth.error) return auth.error
 
   const body = await req.json()
   const { userId, newPassword } = body

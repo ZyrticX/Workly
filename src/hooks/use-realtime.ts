@@ -30,10 +30,11 @@ export function useRealtimeMessages(conversationId: string | null) {
       .from('messages')
       .select('*')
       .eq('conversation_id', conversationId)
-      .order('created_at', { ascending: true })
+      .order('created_at', { ascending: false })
+      .limit(100) // Limit to last 100 messages for performance
 
     if (!error && data) {
-      setMessages(data)
+      setMessages(data.reverse()) // Reverse to chronological order (fetched DESC for LIMIT)
     }
     setLoading(false)
   }, [conversationId]) // eslint-disable-line react-hooks/exhaustive-deps

@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { verifyAdmin } from '@/lib/auth/admin-guard'
 
 const WAHA_URL = process.env.WAHA_API_URL || 'http://localhost:3000'
 const WAHA_KEY = process.env.WAHA_API_KEY || ''
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAdmin()
+  if (auth.error) return auth.error
+
   const supabase = createServiceClient()
   const { phoneId, action } = await req.json()
 
