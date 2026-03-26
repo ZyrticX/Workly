@@ -11,6 +11,9 @@ export interface BookingState {
   date?: string
   time?: string
   notes?: string
+  forOther?: boolean // Booking for someone else (friend, family)
+  otherName?: string // Name of the other person
+  otherRelationship?: string // 'mother', 'friend', 'spouse', 'child', etc.
 }
 
 export interface ExtractedData {
@@ -78,12 +81,23 @@ export function processState(
     if (extracted.date) state.date = extracted.date
     if (extracted.time) state.time = extracted.time
 
+    // Check if booking for someone else
+    const extractedAny = extracted as unknown as Record<string, unknown>
+    if (extractedAny.for_other) {
+      state.forOther = true
+      if (extractedAny.other_name) state.otherName = extractedAny.other_name as string
+      if (extractedAny.other_relationship) state.otherRelationship = extractedAny.other_relationship as string
+    }
+
     // Determine next step
     if (!state.service) {
       state.step = 'collecting_service'
       const serviceList = services.map(s => `${s.name} (${s.duration} דקות, ${s.price} ₪)`).join(', ')
       aiInstruction = `הלקוח רוצה לקבוע תור. שאל אותו בחמימות איזה שירות מעניין אותו. השירותים שלנו: ${serviceList}. אל תציג כרשימה יבשה - שאל בצורה שיחתית.`
-    } else if (!state.name) {
+    } else if (state.forOther && !state.otherName) {
+      state.step = 'collecting_name'
+      aiInstruction = `הלקוח רוצה לקבוע ${state.service} למישהו אחר${state.otherRelationship ? ` (${state.otherRelationship})` : ''}. שאל מה השם של האדם שמגיע לתור.`
+    } else if (!state.name && !state.forOther) {
       state.step = 'collecting_name'
       aiInstruction = `הלקוח רוצה ${state.service}. שאל אותו מה שמו בצורה חמה וידידותית. אם זה לקוח חוזר אמור לו שאתה שמח שחזר.`
     } else if (!state.date) {
@@ -132,10 +146,19 @@ export function processState(
   if (state.step === 'collecting_name') {
     const name = extracted.name
     if (name && name.length > 1) {
-      state.name = name
+      // If booking for other, store as otherName
+      if (state.forOther && !state.otherName) {
+        state.otherName = name
+        state.name = state.name || contactName // Keep original customer name
+      } else {
+        state.name = name
+      }
+      const displayName = state.forOther ? state.otherName : state.name
       if (!state.date) {
         state.step = 'collecting_date'
-        aiInstruction = `נעים מאוד ${name}! עכשיו שאל אותו איזה יום מתאים לו ל${state.service}. תהיה חם וידידותי.`
+        aiInstruction = state.forOther
+          ? `אחלה! אז תור ל${displayName}. איזה יום מתאים?`
+          : `נעים מאוד ${displayName}! עכשיו שאל אותו איזה יום מתאים לו ל${state.service}. תהיה חם וידידותי.`
       } else if (!state.time) {
         state.step = 'collecting_time'
         availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
@@ -227,14 +250,18 @@ export function processState(
   // ── Confirming ──
   if (state.step === 'confirming') {
     if (extracted.confirmation === true || extracted.intent === 'confirm') {
+      const bookingName = state.forOther ? state.otherName : state.name
       action = {
         type: 'book_appointment',
         params: {
           service: state.service,
           date: state.date,
           time: state.time,
-          contact_name: state.name,
+          contact_name: bookingName,
           notes: state.notes || '',
+          for_other: state.forOther || false,
+          other_relationship: state.otherRelationship || null,
+          booked_by_contact_name: state.forOther ? state.name : null,
         }
       }
       skipAI = true
@@ -428,7 +455,9 @@ export async function filterBookedSlots(
 function buildConfirmationInstruction(state: BookingState): string {
   const dayName = state.date ? getDayName(state.date) : ''
   const dateStr = state.date ? formatDate(state.date) : ''
-  return `סכם את התור ללקוח ובקש אישור. הפרטים: שם: ${state.name}, שירות: ${state.service}, יום ${dayName} ${dateStr}, שעה: ${state.time}${state.servicePrice ? `, מחיר: ${state.servicePrice} ₪` : ''}${state.notes ? `, הערות: ${state.notes}` : ''}. שאל "מאשר?"`
+  const bookingName = state.forOther ? state.otherName : state.name
+  const forOtherNote = state.forOther ? ` (תור עבור ${state.otherRelationship || 'אדם אחר'} — ${state.otherName})` : ''
+  return `סכם את התור ובקש אישור. הפרטים: שם: ${bookingName}${forOtherNote}, שירות: ${state.service}, יום ${dayName} ${dateStr}, שעה: ${state.time}${state.servicePrice ? `, מחיר: ${state.servicePrice} ₪` : ''}${state.notes ? `, הערות: ${state.notes}` : ''}. שאל "מאשר?"`
 }
 
 function formatDate(dateStr: string): string {

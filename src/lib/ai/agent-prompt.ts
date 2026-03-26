@@ -528,6 +528,9 @@ async function executeAction(
         service?: string
         contact_name?: string
         notes?: string
+        for_other?: boolean
+        other_relationship?: string | null
+        booked_by_contact_name?: string | null
       }
       if (params.date && params.time && params.service) {
         // Validate date: ensure day-of-week matches the date
@@ -679,16 +682,57 @@ async function executeAction(
             }
           }
 
+          // If booking for someone else, create a linked contact
+          let bookingContactId = input.contactId
+          const isForOther = params.for_other as boolean
+          if (isForOther && params.contact_name) {
+            const otherName = params.contact_name as string
+            const relationship = (params.other_relationship as string) || 'other'
+
+            // Check if linked contact already exists
+            const { data: existingLinked } = await supabase
+              .from('contacts')
+              .select('id')
+              .eq('business_id', input.businessId)
+              .eq('linked_to', input.contactId)
+              .eq('name', otherName)
+              .single()
+
+            if (existingLinked) {
+              bookingContactId = existingLinked.id
+            } else {
+              // Create new linked contact
+              const { data: newContact } = await supabase
+                .from('contacts')
+                .insert({
+                  business_id: input.businessId,
+                  name: otherName,
+                  wa_id: null,
+                  phone: null,
+                  status: 'new',
+                  linked_to: input.contactId,
+                  relationship: relationship,
+                  notes: `נוצר דרך ${input.contactName} (${relationship})`,
+                })
+                .select('id')
+                .single()
+
+              if (newContact) {
+                bookingContactId = newContact.id
+              }
+            }
+          }
+
           // Use atomic RPC to prevent race conditions (advisory lock + conflict check + insert)
-          const { data: aptId, error: rpcError } = await supabase.rpc('book_appointment_atomic', {
+          const { error: rpcError } = await supabase.rpc('book_appointment_atomic', {
             p_business_id: input.businessId,
-            p_contact_id: input.contactId,
+            p_contact_id: bookingContactId,
             p_service_type: params.service as string,
             p_start_time: startTime,
             p_end_time: endTime,
             p_duration_minutes: service.duration,
             p_price: service.price,
-            p_contact_name: learnedName || input.contactName || '',
+            p_contact_name: (params.contact_name as string) || learnedName || input.contactName || '',
             p_notes: (params.notes as string) || '',
           })
 
@@ -993,11 +1037,14 @@ Extract these fields from the message:
   "intent": "book|cancel|reschedule|confirm|deny|provide_info|greeting|question|other",
   "service": "service name if mentioned, or null",
   "name": "person name if mentioned, or null",
-  "gender": "male|female|null — detect from Hebrew grammar (פעלים בזכר/נקבה), name, or context",
+  "gender": "male|female|null — detect from Hebrew grammar, name, or context",
   "date": "YYYY-MM-DD if a date/day is mentioned, or null",
   "time": "HH:MM if time mentioned, or null",
   "notes": "any notes/comments, or null",
-  "confirmation": true if confirming (כן/בטח/מאשר), false if denying (לא/ביטול), null otherwise
+  "confirmation": true/false/null,
+  "for_other": true if booking for someone else (לאמא/לחבר/לבן זוג/למישהו), false otherwise,
+  "other_name": "name of the other person if mentioned, or null",
+  "other_relationship": "mother|father|friend|spouse|child|sibling|other — relationship if mentioned, or null"
 }
 
 Rules:
