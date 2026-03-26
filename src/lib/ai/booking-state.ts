@@ -1,5 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/service'
-import { isHolidayNoWork, isErevChag, getHolidayName } from '@/lib/utils/hebrew-calendar'
+import { isClosedForBusiness, isErevChag, getHolidayName, type HolidaysConfig } from '@/lib/utils/hebrew-calendar'
 
 // ── Types ──────────────────────────────────────────
 
@@ -49,7 +49,8 @@ export function processState(
   extracted: ExtractedData,
   services: ServiceDef[],
   contactName: string,
-  workingHours: Record<string, unknown> | null
+  workingHours: Record<string, unknown> | null,
+  holidaysConfig?: HolidaysConfig | null
 ): StateResult {
   const state = { ...currentState }
   let aiInstruction = ''
@@ -178,8 +179,8 @@ export function processState(
   if (state.step === 'collecting_date') {
     const date = extracted.date
     if (date) {
-      // Check if it's a Jewish holiday
-      if (isHolidayNoWork(date)) {
+      // Check if it's a Jewish holiday (business-specific config)
+      if (isClosedForBusiness(date, holidaysConfig)) {
         const holidayName = getHolidayName(date) || 'חג'
         aiInstruction = `הלקוח ביקש תור ביום ${getDayName(date)} (${formatDate(date)}) אבל זה ${holidayName} — אנחנו סגורים. אמור לו בחמימות ושאל אם רוצה יום אחר.`
         return { newState: state, aiInstruction, action }

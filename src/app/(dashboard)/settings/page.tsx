@@ -24,6 +24,7 @@ import {
   XCircle,
   QrCode,
   Building2,
+  Calendar,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { TimeInput } from '@/components/ui/time-input'
@@ -678,6 +679,135 @@ function WhatsAppSection({
   )
 }
 
+// ── Holidays Section ────────────────────────────────────
+
+const DEFAULT_CLOSED_HOLIDAYS = [
+  'Rosh Hashana', 'Yom Kippur', 'Erev Yom Kippur',
+  'Sukkot', 'Shmini Atzeret', 'Pesach', 'Erev Pesach',
+  'Shavuot', 'Erev Shavuot', 'Yom HaZikaron', 'Yom HaAtzmaut', 'Tisha BAv',
+]
+
+const HOLIDAY_DISPLAY: Record<string, string> = {
+  'Rosh Hashana': 'ראש השנה',
+  'Yom Kippur': 'יום כיפור',
+  'Erev Yom Kippur': 'ערב יום כיפור',
+  'Sukkot': 'סוכות',
+  'Shmini Atzeret': 'שמיני עצרת / שמחת תורה',
+  'Pesach': 'פסח',
+  'Erev Pesach': 'ערב פסח',
+  'Shavuot': 'שבועות',
+  'Erev Shavuot': 'ערב שבועות',
+  'Yom HaZikaron': 'יום הזיכרון',
+  'Yom HaAtzmaut': 'יום העצמאות',
+  'Tisha BAv': 'תשעה באב',
+  'Chanukah': 'חנוכה',
+  'Purim': 'פורים',
+  'Lag BaOmer': 'ל״ג בעומר',
+  'Chol HaMoed Sukkot': 'חול המועד סוכות',
+  'Chol HaMoed Pesach': 'חול המועד פסח',
+  'Hoshana Raba': 'הושענא רבה',
+  'Shushan Purim': 'שושן פורים',
+  'Tzom Gedaliah': 'צום גדליה',
+}
+
+function HolidaysSection({ businessId, supabase, saving, saved, error, onSave }: {
+  businessId: string
+  supabase: ReturnType<typeof createClient>
+  saving: boolean
+  saved: boolean
+  error: string | null
+  onSave: () => void
+}) {
+  const [closedHolidays, setClosedHolidays] = useState<string[]>(DEFAULT_CLOSED_HOLIDAYS)
+  const [customDates, setCustomDates] = useState<string[]>([])
+  const [erevTime, setErevTime] = useState('14:00')
+  const [loadingH, setLoadingH] = useState(true)
+  const [savingH, setSavingH] = useState(false)
+
+  useEffect(() => {
+    async function load() {
+      const { data } = await supabase
+        .from('business_settings')
+        .select('holidays_config')
+        .eq('business_id', businessId)
+        .single()
+      if (data && (data as Record<string, unknown>).holidays_config) {
+        const cfg = (data as Record<string, unknown>).holidays_config as Record<string, unknown>
+        if (cfg.closed_holidays) setClosedHolidays(cfg.closed_holidays as string[])
+        if (cfg.custom_closed_dates) setCustomDates(cfg.custom_closed_dates as string[])
+        if (cfg.erev_close_time) setErevTime(cfg.erev_close_time as string)
+      }
+      setLoadingH(false)
+    }
+    load()
+  }, [businessId, supabase])
+
+  const toggleHoliday = (name: string) => {
+    setClosedHolidays(prev =>
+      prev.includes(name) ? prev.filter(h => h !== name) : [...prev, name]
+    )
+  }
+
+  const handleSave = async () => {
+    setSavingH(true)
+    await supabase
+      .from('business_settings')
+      .update({
+        holidays_config: {
+          closed_holidays: closedHolidays,
+          custom_closed_dates: customDates,
+          erev_close_time: erevTime,
+        },
+      })
+      .eq('business_id', businessId)
+    setSavingH(false)
+    onSave()
+  }
+
+  if (loadingH) return <div className="p-4 text-center text-sm text-gray-400">טוען...</div>
+
+  return (
+    <div className="space-y-4 p-4">
+      <p className="text-xs text-[#6B7B73]">בחר באילו חגים העסק סגור. הבוט לא יקבע תורים בימים אלה.</p>
+
+      <div className="space-y-2">
+        {Object.entries(HOLIDAY_DISPLAY).map(([key, nameHe]) => (
+          <label key={key} className="flex items-center gap-3 py-2 px-3 rounded-xl hover:bg-gray-50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={closedHolidays.includes(key)}
+              onChange={() => toggleHoliday(key)}
+              className="w-5 h-5 rounded border-gray-300 text-[var(--color-primary)] focus:ring-[var(--color-primary)]"
+            />
+            <span className="text-sm font-medium text-[#1B2E24]">{nameHe}</span>
+            <span className="text-xs text-[#8FA89A] ms-auto">
+              {closedHolidays.includes(key) ? 'סגור' : 'פתוח'}
+            </span>
+          </label>
+        ))}
+      </div>
+
+      <div className="border-t border-[#E8EFE9] pt-4">
+        <label className="block text-sm font-medium text-[#1B2E24] mb-1">שעת סגירה בערב חג</label>
+        <input
+          type="text"
+          value={erevTime}
+          onChange={e => setErevTime(e.target.value)}
+          placeholder="14:00"
+          className="w-32 rounded-xl border border-[#E8EFE9] px-3 py-2.5 text-sm"
+        />
+      </div>
+
+      <SaveButton
+        onClick={handleSave}
+        saving={savingH}
+        saved={saved}
+        error={error}
+      />
+    </div>
+  )
+}
+
 // ── Main Page ──────────────────────────────────────────
 
 export default function SettingsPage() {
@@ -973,6 +1103,18 @@ export default function SettingsPage() {
             saving={savingSection === 'cancellation'}
             saved={savedSection === 'cancellation'}
             error={errorSection?.section === 'cancellation' ? errorSection.message : null}
+          />
+        </CollapsibleSection>
+
+        {/* Holidays */}
+        <CollapsibleSection title="חגים וימי חופש" icon={Calendar}>
+          <HolidaysSection
+            businessId={businessId!}
+            supabase={supabase}
+            saving={savingSection === 'holidays'}
+            saved={savedSection === 'holidays'}
+            error={errorSection?.section === 'holidays' ? errorSection.message : null}
+            onSave={() => { setSavingSection(null); setSavedSection('holidays'); setTimeout(() => setSavedSection(null), 3000) }}
           />
         </CollapsibleSection>
 

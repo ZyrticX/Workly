@@ -107,6 +107,31 @@ export function isErevChag(date: string): boolean {
   return holiday !== null && holiday.isErev
 }
 
+/** Get all holidays */
+export function getAllHolidays(): HebrewHoliday[] {
+  return HOLIDAYS_5786_5787
+}
+
+/** Get unique holiday groups (for settings UI) */
+export function getHolidayGroups(): { name: string; nameHe: string; dates: string[]; isWorkDay: boolean }[] {
+  const groups: Record<string, { name: string; nameHe: string; dates: string[]; isWorkDay: boolean }> = {}
+  for (const h of HOLIDAYS_5786_5787) {
+    // Group by base name (remove numbers)
+    const baseName = h.name.replace(/\s*\d+$/, '').replace('Erev ', '')
+    if (!groups[baseName]) {
+      groups[baseName] = { name: baseName, nameHe: h.nameHe.replace(/\s*[אב]׳$/, ''), dates: [], isWorkDay: h.isWorkDay }
+    }
+    groups[baseName].dates.push(h.date)
+  }
+  // Deduplicate
+  const seen = new Set<string>()
+  return Object.values(groups).filter(g => {
+    if (seen.has(g.nameHe)) return false
+    seen.add(g.nameHe)
+    return true
+  })
+}
+
 /** Get all holidays for a specific month */
 export function getHolidaysForMonth(year: number, month: number): HebrewHoliday[] {
   const prefix = `${year}-${String(month).padStart(2, '0')}`
@@ -119,8 +144,46 @@ export function getHolidayName(date: string): string | null {
   return holiday ? holiday.nameHe : null
 }
 
+// ── Business-aware holiday checks ──────────────────
+
+export interface HolidaysConfig {
+  closed_holidays: string[] // Holiday names that are closed (e.g., "Yom Kippur")
+  custom_closed_dates: string[] // Custom closed dates (YYYY-MM-DD)
+  erev_close_time?: string // Early closing time on erev (e.g., "14:00")
+}
+
+const DEFAULT_CLOSED = [
+  'Rosh Hashana', 'Yom Kippur', 'Erev Yom Kippur',
+  'Sukkot', 'Shmini Atzeret',
+  'Pesach', 'Erev Pesach',
+  'Shavuot', 'Erev Shavuot',
+  'Yom HaZikaron', 'Yom HaAtzmaut',
+  'Tisha BAv',
+]
+
+/** Check if date is closed for this business */
+export function isClosedForBusiness(date: string, config?: HolidaysConfig | null): boolean {
+  const holiday = getHoliday(date)
+  if (!holiday) {
+    // Check custom closed dates
+    return config?.custom_closed_dates?.includes(date) || false
+  }
+
+  const closedList = config?.closed_holidays || DEFAULT_CLOSED
+  // Check if any closed holiday name matches (partial match)
+  return closedList.some(closed =>
+    holiday.name.includes(closed) || closed.includes(holiday.name)
+  )
+}
+
+/** Get erev closing time */
+export function getErevCloseTime(date: string, config?: HolidaysConfig | null): string | null {
+  if (!isErevChag(date)) return null
+  return config?.erev_close_time || '14:00'
+}
+
 /** Build a string for the AI prompt listing upcoming holidays */
-export function getUpcomingHolidaysForPrompt(fromDate: string, days: number = 14): string {
+export function getUpcomingHolidaysForPrompt(fromDate: string, days: number = 14, config?: HolidaysConfig | null): string {
   const from = new Date(fromDate + 'T00:00:00')
   const to = new Date(from)
   to.setDate(to.getDate() + days)
@@ -129,6 +192,9 @@ export function getUpcomingHolidaysForPrompt(fromDate: string, days: number = 14
   const upcoming = HOLIDAYS_5786_5787.filter(h => h.date >= fromDate && h.date <= toStr)
   if (upcoming.length === 0) return ''
 
-  return `\n## חגים קרובים (אל תקבע תורים בימים אלה!):\n` +
-    upcoming.map(h => `- ${h.date}: ${h.nameHe}${!h.isWorkDay ? ' — סגור!' : h.isErev ? ' — ערב חג, סגירה מוקדמת' : ''}`).join('\n')
+  return `\n## חגים קרובים:\n` +
+    upcoming.map(h => {
+      const closed = isClosedForBusiness(h.date, config)
+      return `- ${h.date}: ${h.nameHe}${closed ? ' — סגור!' : h.isErev ? ' — ערב חג, סגירה מוקדמת' : ' — פתוח'}`
+    }).join('\n')
 }

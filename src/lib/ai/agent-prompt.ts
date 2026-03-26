@@ -1098,13 +1098,15 @@ ${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unk
     }
   }
 
-  // 6. Run state machine
+  // 6. Run state machine (with holidays config)
+  const holidaysConfig = ((settingsResult.data as Record<string, unknown>)?.holidays_config as import('@/lib/utils/hebrew-calendar').HolidaysConfig) || null
   const stateResult = processState(
     bookingState,
     extracted,
     services,
     contactCtx.name,
-    settingsResult.data?.working_hours as Record<string, unknown> | null
+    settingsResult.data?.working_hours as Record<string, unknown> | null,
+    holidaysConfig
   )
 
   // 6.5 CRITICAL: Check availability BEFORE confirming
