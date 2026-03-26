@@ -389,9 +389,12 @@ ${customBlock}${advancedBlock}
 ## מידע על הלקוח/ה הנוכחי:
 ${contactContext ? `
 שם: ${contactContext.name}
+מין: ${contactContext.gender === 'male' ? 'זכר — דבר אליו בלשון זכר (רוצה, קבעת, שלך)' : contactContext.gender === 'female' ? 'נקבה — דברי אליה בלשון נקבה (רוצה, קבעת, שלך)' : 'לא ידוע — נסה לזהות מהשם או מהדקדוק ועדכן via update_contact'}
 סטטוס: ${contactContext.status === 'new' ? 'לקוח/ה חדש/ה (פעם ראשונה!)' : contactContext.status === 'returning' ? 'לקוח/ה חוזר/ת' : contactContext.status === 'vip' ? 'VIP — לקוח/ה חשוב/ה' : contactContext.status}
 מספר טלפון: ${contactContext.phone || 'לא ידוע'}
 מספר ביקורים: ${contactContext.visits}
+
+**חשוב**: תמיד פנה ללקוח בשם שלו! אם השם ידוע — השתמש בו בכל הודעה. "${contactContext.name}" — לא "לקוח" גנרי.
 ` : 'אין מידע על הלקוח'}
 
 ## הוראות לפי סטטוס לקוח:
@@ -460,7 +463,8 @@ CRITICAL: כשהלקוח מאשר קביעת תור ויש לך את כל הפר
 
 ### action: update_contact
 כאשר הלקוח/ה מספר/ת פרטים חדשים, שלחי:
-{ "type": "update_contact", "params": { "name": "שם חדש", "phone": "0501234567", "notes": "הערה כלשהי" } }
+{ "type": "update_contact", "params": { "name": "שם חדש", "phone": "0501234567", "gender": "male", "notes": "הערה כלשהי" } }
+gender: "male" או "female". זהי אוטומטית מהשם או מהדקדוק העברי.
 שלחי רק שדות שהשתנו, לא את כולם.
 
 ### action: escalate
@@ -755,6 +759,7 @@ async function executeAction(
       const contactParams = action.params as {
         name?: string
         phone?: string
+        gender?: string
         notes?: string
       }
       const updates: Record<string, unknown> = {}
@@ -768,6 +773,9 @@ async function executeAction(
         // NEVER update wa_id - it's the WhatsApp identifier and must stay as received from WAHA
       }
       if (contactParams.notes) updates.notes = contactParams.notes
+      if (contactParams.gender && ['male', 'female'].includes(contactParams.gender)) {
+        updates.gender = contactParams.gender
+      }
 
       if (Object.keys(updates).length > 0) {
         try {
@@ -925,11 +933,13 @@ export async function processAIAgent(
     status: contactResult.data.status || input.contactStatus || 'new',
     phone: contactResult.data.phone || input.contactPhone || '',
     visits: contactResult.data.total_visits || input.contactVisits || 0,
+    gender: (contactResult.data as Record<string, unknown>).gender as string | null || null,
   } : {
     name: input.contactName,
     status: input.contactStatus || 'new',
     phone: input.contactPhone || '',
     visits: input.contactVisits || 0,
+    gender: null as string | null,
   }
 
   // 2. Load booking state
@@ -983,6 +993,7 @@ Extract these fields from the message:
   "intent": "book|cancel|reschedule|confirm|deny|provide_info|greeting|question|other",
   "service": "service name if mentioned, or null",
   "name": "person name if mentioned, or null",
+  "gender": "male|female|null — detect from Hebrew grammar (פעלים בזכר/נקבה), name, or context",
   "date": "YYYY-MM-DD if a date/day is mentioned, or null",
   "time": "HH:MM if time mentioned, or null",
   "notes": "any notes/comments, or null",
@@ -994,7 +1005,9 @@ Rules:
 - "לא", "ביטול", "לא רוצה" → confirmation: false
 - "מחר" → tomorrow's date
 - "היום" → today's date
-- If step is "collecting_name" and message is a short word (1-3 words), it's probably a name`
+- If step is "collecting_name" and message is a short word (1-3 words), it's probably a name
+- Gender detection: "רוצה" (male), "רוצה" can be both, "רציתי" → check context. Names like דוד/משה/יוסי = male. שרה/מיכל/נועה = female.
+${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unknown — try to detect from message'}`
 
   // 4. Send to AI for extraction only
   const conversationHistory = (historyResult.data || [])
@@ -1017,6 +1030,15 @@ Rules:
     extracted = JSON.parse(cleaned)
   } catch {
     extracted = { intent: 'other' }
+  }
+
+  // 5.5 Auto-update gender if detected and not already known
+  if ((extracted as Record<string, unknown>).gender && !contactCtx.gender) {
+    const detectedGender = (extracted as Record<string, unknown>).gender as string
+    if (['male', 'female'].includes(detectedGender)) {
+      contactCtx.gender = detectedGender
+      supabase.from('contacts').update({ gender: detectedGender }).eq('id', input.contactId).then(() => {})
+    }
   }
 
   // 6. Run state machine
