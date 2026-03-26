@@ -31,6 +31,8 @@ interface BusinessRow {
   phone_status: string | null
   phones: BusinessPhone[]
   billing: BusinessBilling | null
+  is_draft?: boolean
+  ai_setup_summary?: string | null
 }
 
 interface BusinessesClientProps {
@@ -185,6 +187,9 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
                 <th className="text-start px-4 py-3 font-semibold text-text-muted text-xs">
                   הצטרפות
                 </th>
+                <th className="text-start px-4 py-3 font-semibold text-text-muted text-xs">
+                  פעולות
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -253,6 +258,50 @@ export function BusinessesClient({ businesses }: BusinessesClientProps) {
                     </td>
                     <td className="px-4 py-3 text-xs text-text-muted">
                       {new Date(biz.created_at).toLocaleDateString('he-IL')}
+                    </td>
+                    <td className="px-4 py-3">
+                      {biz.is_draft ? (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              if (!confirm('לאשר את הלקוח? ייצר משתמש חדש')) return
+                              const res = await fetch('/api/admin/create-business', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ businessId: biz.id, action: 'approve' }),
+                              })
+                              if (res.ok) {
+                                const data = await res.json()
+                                alert(`לקוח אושר! סיסמה: ${data.password}`)
+                                window.location.reload()
+                              } else {
+                                alert('שגיאה באישור')
+                              }
+                            }}
+                            className="px-3 py-1 text-xs font-medium text-white bg-green-500 rounded-lg hover:bg-green-600"
+                          >
+                            אשר ✓
+                          </button>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation()
+                              if (!confirm('למחוק את הלקוח?')) return
+                              await fetch('/api/admin/create-business', {
+                                method: 'PATCH',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ businessId: biz.id, action: 'reject' }),
+                              })
+                              window.location.reload()
+                            }}
+                            className="px-3 py-1 text-xs font-medium text-red-500 border border-red-200 rounded-lg hover:bg-red-50"
+                          >
+                            מחק
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-green-600">פעיל ✓</span>
+                      )}
                     </td>
                   </tr>
                 ))

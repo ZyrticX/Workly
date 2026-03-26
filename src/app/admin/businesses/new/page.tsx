@@ -39,11 +39,11 @@ export default function NewBusinessPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!form.businessName || !form.ownerEmail || !form.ownerPassword || !form.ownerPhone) {
-      setError('שם עסק, מייל, סיסמה ומספר טלפון הם שדות חובה')
+    if (!form.businessName || !form.ownerEmail || !form.businessType) {
+      setError('שם עסק, מייל וסוג עסק הם שדות חובה')
       return
     }
-    if (form.ownerPassword.length < 6) {
+    if (form.ownerPassword && form.ownerPassword.length < 6) {
       setError('סיסמה חייבת להכיל לפחות 6 תווים')
       return
     }

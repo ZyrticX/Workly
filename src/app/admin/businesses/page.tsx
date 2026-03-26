@@ -14,6 +14,8 @@ async function getBusinesses() {
       plan,
       status,
       created_at,
+      is_draft,
+      ai_setup_summary,
       phone_numbers (
         id,
         phone_number,
@@ -95,6 +97,8 @@ async function getBusinesses() {
       phone_status: primaryPhone?.status ?? null,
       phones: (biz.phone_numbers as any[]) ?? [],
       billing: billing,
+      is_draft: (biz as any).is_draft ?? false,
+      ai_setup_summary: (biz as any).ai_setup_summary ?? null,
     }
   })
 }
