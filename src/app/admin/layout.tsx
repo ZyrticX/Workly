@@ -5,7 +5,8 @@ import { AdminSidebar } from '@/components/admin/admin-sidebar'
 const ALLOWED_ADMIN_EMAILS = [
   'smartmindsai31@gmail.com',
   'evgeniy.orel@open-israel.co.il',
-  'test@admin.com',
+  'evgeniyphotos1@gmail.com',
+  'eladmilles2005@gmail.com',
   'workly@admin.com',
 ]
 
