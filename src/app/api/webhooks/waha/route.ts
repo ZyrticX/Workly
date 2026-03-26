@@ -395,12 +395,36 @@ export async function POST(req: NextRequest) {
 
       const dbStatus = wahaStatus === 'WORKING' ? 'connected' : 'disconnected'
 
+      // If WORKING, try to get the real phone number from WAHA
+      const updateData: Record<string, unknown> = {
+        status: dbStatus,
+        last_health_check: new Date().toISOString(),
+      }
+
+      if (wahaStatus === 'WORKING') {
+        try {
+          const wahaUrl = process.env.WAHA_API_URL || 'http://localhost:3000'
+          const wahaKey = process.env.WAHA_API_KEY || ''
+          const sessionRes = await fetch(`${wahaUrl}/api/sessions/${session}`, {
+            headers: { 'X-Api-Key': wahaKey },
+          })
+          if (sessionRes.ok) {
+            const sessionData = await sessionRes.json()
+            const phoneId = sessionData?.me?.id as string | undefined
+            if (phoneId) {
+              // Extract phone number from "972547530955@c.us"
+              const realPhone = phoneId.replace('@c.us', '').replace('@lid', '')
+              if (realPhone && !/^temp_/.test(realPhone)) {
+                updateData.phone_number = realPhone
+              }
+            }
+          }
+        } catch { /* ignore - just update status */ }
+      }
+
       const { error } = await supabase
         .from('phone_numbers')
-        .update({
-          status: dbStatus,
-          last_health_check: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('session_id', session)
 
       if (error) {
