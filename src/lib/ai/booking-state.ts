@@ -1,4 +1,5 @@
 import { createServiceClient } from '@/lib/supabase/service'
+import { isHolidayNoWork, isErevChag, getHolidayName } from '@/lib/utils/hebrew-calendar'
 
 // ── Types ──────────────────────────────────────────
 
@@ -177,6 +178,18 @@ export function processState(
   if (state.step === 'collecting_date') {
     const date = extracted.date
     if (date) {
+      // Check if it's a Jewish holiday
+      if (isHolidayNoWork(date)) {
+        const holidayName = getHolidayName(date) || 'חג'
+        aiInstruction = `הלקוח ביקש תור ביום ${getDayName(date)} (${formatDate(date)}) אבל זה ${holidayName} — אנחנו סגורים. אמור לו בחמימות ושאל אם רוצה יום אחר.`
+        return { newState: state, aiInstruction, action }
+      }
+      // Check if it's erev chag (early closing)
+      if (isErevChag(date)) {
+        const holidayName = getHolidayName(date) || 'ערב חג'
+        // Continue but note early closing
+        aiInstruction += ` (שים לב: ${holidayName} — סגירה מוקדמת)`
+      }
       state.date = date
       if (!state.time) {
         state.step = 'collecting_time'

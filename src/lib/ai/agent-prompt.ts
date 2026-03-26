@@ -352,6 +352,8 @@ ${bizPersonality.phrases.map(p => `- "${p}"`).join('\n')}
 ${serviceSlotExamples ? `- שעות מותרות לפי שירות:\n${serviceSlotExamples}` : ''}
 - אם הלקוח מבקש שעה שלא מתחלקת נכון (למשל 9:15 לשירות של 30 דקות), הציע/י את השעה העגולה הקרובה.
 - אף פעם אל תקבע/י שני תורים באותו זמן!
+- בחגים יהודיים העסק סגור. אם לקוח מבקש תור בחג — אמור/י שסגור ותציע/י יום אחר.
+${(() => { try { const { getUpcomingHolidaysForPrompt } = require('@/lib/utils/hebrew-calendar'); return getUpcomingHolidaysForPrompt(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })); } catch { return ''; } })()}
 
 ## פרטי העסק:
 שם: ${biz.name || 'לא הוגדר'}
