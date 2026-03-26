@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   XCircle,
   QrCode,
+  Building2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { TimeInput } from '@/components/ui/time-input'
@@ -693,6 +694,12 @@ export default function SettingsPage() {
   const [cancellation, setCancellation] = useState<CancellationPolicy>(DEFAULT_CANCELLATION)
   const [whatsappStatus, setWhatsappStatus] = useState<WhatsAppStatus | null>(null)
 
+  // Business info state
+  const [bizName, setBizName] = useState('')
+  const [bizType, setBizType] = useState('')
+  const [bizAddress, setBizAddress] = useState('')
+  const [bizLogoUrl, setBizLogoUrl] = useState('')
+
   // Saving state per section
   const [savingSection, setSavingSection] = useState<string | null>(null)
   const [savedSection, setSavedSection] = useState<string | null>(null)
@@ -705,7 +712,7 @@ export default function SettingsPage() {
     setLoading(true)
 
     try {
-      const [settingsResult, personaResult] = await Promise.all([
+      const [settingsResult, personaResult, bizResult] = await Promise.all([
         supabase
           .from('business_settings')
           .select('*')
@@ -716,7 +723,19 @@ export default function SettingsPage() {
           .select('*')
           .eq('business_id', businessId)
           .single(),
+        supabase
+          .from('businesses')
+          .select('name, business_type, address, logo_url')
+          .eq('id', businessId)
+          .single(),
       ])
+
+      if (bizResult.data) {
+        setBizName(bizResult.data.name || '')
+        setBizType(bizResult.data.business_type || '')
+        setBizAddress((bizResult.data as Record<string, unknown>).address as string || '')
+        setBizLogoUrl((bizResult.data as Record<string, unknown>).logo_url as string || '')
+      }
 
       if (settingsResult.data) {
         const s = settingsResult.data
@@ -754,7 +773,13 @@ export default function SettingsPage() {
     setErrorSection(null)
 
     try {
-      if (section === 'ai_style') {
+      if (section === 'business_info') {
+        const { error } = await supabase
+          .from('businesses')
+          .update(data)
+          .eq('id', businessId)
+        if (error) throw error
+      } else if (section === 'ai_style') {
         const { error } = await supabase
           .from('ai_personas')
           .upsert(
@@ -839,8 +864,59 @@ export default function SettingsPage() {
 
       {/* Content */}
       <div className="mx-auto max-w-2xl space-y-3 px-4 py-5 pb-24">
+        {/* Business Info */}
+        <CollapsibleSection title="פרטי עסק" icon={Building2} defaultOpen>
+          <div className="space-y-4 p-4">
+            <div>
+              <label className="block text-sm font-medium text-[#1B2E24] mb-1">שם העסק</label>
+              <input
+                value={bizName}
+                onChange={e => setBizName(e.target.value)}
+                placeholder="למשל: מספרת שמואל"
+                className="w-full rounded-xl border border-[#E8EFE9] px-3 py-2.5 text-sm min-h-[48px]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#1B2E24] mb-1">סוג עסק</label>
+              <select
+                value={bizType}
+                onChange={e => setBizType(e.target.value)}
+                className="w-full rounded-xl border border-[#E8EFE9] px-3 py-2.5 text-sm min-h-[48px]"
+              >
+                <option value="">בחר סוג</option>
+                <option value="מספרה">מספרה</option>
+                <option value="קוסמטיקה">קוסמטיקה</option>
+                <option value="כושר">כושר</option>
+                <option value="רפואה">רפואה</option>
+                <option value="רואה חשבון">רואה חשבון</option>
+                <option value="מסעדה">מסעדה</option>
+                <option value="אחר">אחר</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[#1B2E24] mb-1">כתובת</label>
+              <input
+                value={bizAddress}
+                onChange={e => setBizAddress(e.target.value)}
+                placeholder="רחוב, עיר"
+                className="w-full rounded-xl border border-[#E8EFE9] px-3 py-2.5 text-sm min-h-[48px]"
+              />
+            </div>
+            <SaveButton
+              onClick={() => saveSection('business_info', {
+                name: bizName,
+                business_type: bizType,
+                address: bizAddress,
+              })}
+              saving={savingSection === 'business_info'}
+              saved={savedSection === 'business_info'}
+              error={errorSection?.section === 'business_info' ? errorSection.message : null}
+            />
+          </div>
+        </CollapsibleSection>
+
         {/* Working Hours */}
-        <CollapsibleSection title="שעות עבודה" icon={Clock} defaultOpen>
+        <CollapsibleSection title="שעות עבודה" icon={Clock}>
           <WorkingHoursSection
             hours={workingHours}
             onChange={setWorkingHours}
