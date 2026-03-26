@@ -91,7 +91,7 @@ export function processState(
       aiInstruction = `שלום ${state.name}! הוא רוצה ${state.service}. שאל אותו בצורה טבעית איזה יום מתאים לו. אפשר להציע "השבוע?" או "מתי נוח לך?"`
     } else if (!state.time) {
       state.step = 'collecting_time'
-      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
+      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
       const dayName = getDayName(state.date!)
       aiInstruction = `${state.name} רוצה ${state.service} ביום ${dayName}. שאל אותו באיזו שעה נוח לו. השעות הפנויות: ${availableSlots.join(', ')}. הצע 2-3 שעות מומלצות, אל תזרוק את כל הרשימה.`
     } else {
@@ -118,7 +118,7 @@ export function processState(
         aiInstruction = `${state.name} בחר ${svc.name}. שאל אותו איזה יום מתאים לו.`
       } else {
         state.step = 'collecting_time'
-        availableSlots = getValidSlots(svc.duration, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
+        availableSlots = getValidSlots(svc.duration, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
         aiInstruction = `${state.name} רוצה ${svc.name}. שאל אותו באיזו שעה. שעות פנויות: ${availableSlots.slice(0, 5).join(', ')}...`
       }
     } else {
@@ -138,7 +138,7 @@ export function processState(
         aiInstruction = `נעים מאוד ${name}! עכשיו שאל אותו איזה יום מתאים לו ל${state.service}. תהיה חם וידידותי.`
       } else if (!state.time) {
         state.step = 'collecting_time'
-        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
+        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
         aiInstruction = `${name} רוצה ${state.service}. שאל באיזו שעה. שעות: ${availableSlots.slice(0, 5).join(', ')}...`
       } else {
         state.step = 'confirming'
@@ -158,7 +158,7 @@ export function processState(
       if (!state.time) {
         state.step = 'collecting_time'
         const dayName = getDayName(date)
-        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
+        availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
         aiInstruction = `${state.name} בחר יום ${dayName}. שאל אותו באיזו שעה נוח לו. הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 6).join(', ')}. תהיה טבעי.`
       } else {
         state.step = 'confirming'
@@ -180,7 +180,7 @@ export function processState(
 
       // Validate against real working hours (not hardcoded)
       const dayIdx = state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined
-      const validSlots = getValidSlots(duration, workingHours, dayIdx)
+      const validSlots = getValidSlots(duration, workingHours, dayIdx, state.date)
       if (validSlots.length === 0) {
         aiInstruction = `הלקוח ביקש שעה ${time} אבל אנחנו סגורים ביום הזה. אמור לו בעדינות ושאל אם רוצה יום אחר.`
         state.date = undefined
@@ -208,7 +208,7 @@ export function processState(
       state.step = 'collecting_notes'
       aiInstruction = `${state.name} בחר שעה ${validTime} ל${state.service}. שאל אותו אם יש משהו שחשוב שנדע לפני התור, הערות מיוחדות, או שאפשר להמשיך. תהיה קל.`
     } else {
-      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined)
+      availableSlots = getValidSlots(state.serviceDuration || 30, workingHours, state.date ? new Date(state.date + 'T12:00:00').getDay() : undefined, state.date)
       aiInstruction = `לא הצלחתי להבין את השעה. שאל שוב, הצע 2-3 שעות מתוך: ${availableSlots.slice(0, 5).join(', ')}`
     }
     return { newState: state, aiInstruction, action, availableSlots }
@@ -311,7 +311,8 @@ function findService(input: string, services: ServiceDef[]): ServiceDef | null {
 export function getValidSlots(
   duration: number,
   workingHours?: Record<string, unknown> | null,
-  dayOfWeek?: number
+  dayOfWeek?: number,
+  dateStr?: string // YYYY-MM-DD — if today, filter past times
 ): string[] {
   // Read real working hours from business settings
   let startMin = 9 * 60 // fallback 09:00
@@ -339,8 +340,22 @@ export function getValidSlots(
     }
   }
 
+  // If date is today, only show future slots (+ 30 min buffer)
+  let minTimeMin = 0
+  if (dateStr) {
+    const now = new Date()
+    const todayISR = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+    if (dateStr === todayISR) {
+      const nowISR = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+      minTimeMin = nowISR.getHours() * 60 + nowISR.getMinutes() + 30 // 30 min buffer
+    }
+  }
+
   const slots: string[] = []
   for (let m = startMin; m + duration <= endMin; m += duration) {
+    // Skip past times for today
+    if (m < minTimeMin) continue
+
     const h = Math.floor(m / 60)
     const mm = m % 60
     const slotTime = `${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`

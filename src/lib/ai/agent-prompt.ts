@@ -954,6 +954,8 @@ Available services: ${services.map(s => s.name).join(', ')}
 Current booking step: ${bookingState.step}
 ${!contactNameIsPlaceholder ? `Known customer name from DB: ${knownContactName} (use this as the name if the customer doesn't provide a different one)` : 'Customer name is NOT known yet — extract it from the message if mentioned.'}
 Today: ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
+Current time in Israel: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false })}
+IMPORTANT: If the customer asks for today, only offer times AFTER the current time. Don't offer 09:00 if it's already 17:00.
 
 Day lookup (next occurrence of each day):
 ${(() => {
@@ -1048,7 +1050,7 @@ Rules:
       // Get real available slots
       const dayIdx = new Date(stateResult.newState.date + 'T12:00:00').getDay()
       const workingHours = settingsResult.data?.working_hours as Record<string, unknown> | null
-      const theoreticalSlots = getSlots(stateResult.newState.serviceDuration || 30, workingHours, dayIdx)
+      const theoreticalSlots = getSlots(stateResult.newState.serviceDuration || 30, workingHours, dayIdx, stateResult.newState.date)
       const realSlots = await filterBookedSlots(
         input.businessId,
         stateResult.newState.date,
