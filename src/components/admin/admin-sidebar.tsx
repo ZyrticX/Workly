@@ -13,6 +13,7 @@ import {
   CreditCard,
   Wallet,
   FileText,
+  MessageSquareMore,
   LogOut,
 } from 'lucide-react'
 
@@ -25,6 +26,7 @@ const navItems = [
   { label: 'סימים', href: '/admin/sims', icon: CreditCard },
   { label: 'חיובים', href: '/admin/billing', icon: Wallet },
   { label: 'לוגים', href: '/admin/logs', icon: FileText },
+  { label: 'טיקטים', href: '/admin/tickets', icon: MessageSquareMore },
 ]
 
 export function AdminSidebar() {
