@@ -1026,7 +1026,70 @@ Rules:
     settingsResult.data?.working_hours as Record<string, unknown> | null
   )
 
-  // 6.5 Filter available slots by actual DB bookings
+  // 6.5 CRITICAL: Check availability BEFORE confirming
+  // If state machine selected a time and moved to collecting_notes or confirming,
+  // verify the slot is actually free in the DB
+  if (stateResult.newState.time && stateResult.newState.date &&
+      (stateResult.newState.step === 'collecting_notes' || stateResult.newState.step === 'confirming') &&
+      bookingState.step === 'collecting_time') {
+    const { checkAvailability, filterBookedSlots, getValidSlots: getSlots } = await import('@/lib/ai/booking-state')
+    const availability = await checkAvailability(
+      input.businessId,
+      stateResult.newState.date,
+      stateResult.newState.time,
+      stateResult.newState.serviceDuration || 30
+    )
+
+    if (!availability.available) {
+      // Slot is taken! Don't proceed to notes/confirming — go back to collecting_time
+      stateResult.newState.step = 'collecting_time'
+      stateResult.newState.time = undefined
+
+      // Get real available slots
+      const dayIdx = new Date(stateResult.newState.date + 'T12:00:00').getDay()
+      const workingHours = settingsResult.data?.working_hours as Record<string, unknown> | null
+      const theoreticalSlots = getSlots(stateResult.newState.serviceDuration || 30, workingHours, dayIdx)
+      const realSlots = await filterBookedSlots(
+        input.businessId,
+        stateResult.newState.date,
+        theoreticalSlots,
+        stateResult.newState.serviceDuration || 30
+      )
+
+      if (realSlots.length === 0) {
+        stateResult.newState.step = 'waitlist_offer'
+        stateResult.aiInstruction = `השעה שהלקוח ביקש תפוסה, וגם כל שאר השעות ביום הזה. שאל אם רוצה להיכנס לרשימת המתנה או לנסות יום אחר.`
+      } else {
+        stateResult.aiInstruction = `השעה הזאת כבר תפוסה! אמור ללקוח בעדינות ותציע שעות פנויות: ${realSlots.slice(0, 4).join(', ')}. תהיה נחמד ולא מתנצל.`
+        stateResult.availableSlots = realSlots
+      }
+      stateResult.action = null
+      stateResult.skipAI = false
+    }
+  }
+
+  // 6.6 Also check before booking action (belt and suspenders)
+  if (stateResult.action?.type === 'book_appointment' && stateResult.newState.step === 'idle') {
+    const params = stateResult.action.params as { date?: string; time?: string }
+    if (params.date && params.time) {
+      const { checkAvailability: checkAvail2 } = await import('@/lib/ai/booking-state')
+      const avail = await checkAvail2(
+        input.businessId,
+        params.date,
+        params.time,
+        stateResult.newState.serviceDuration || services[0]?.duration || 30
+      )
+      if (!avail.available) {
+        // Cancel the booking action
+        stateResult.action = null
+        stateResult.skipAI = false
+        stateResult.aiInstruction = `רגע, מישהו תפס את השעה הזאת ממש עכשיו. אמור ללקוח שהשעה כבר לא פנויה, ושאל אם רוצה שעה אחרת.`
+        stateResult.newState = { ...stateResult.newState, step: 'collecting_time', time: undefined }
+      }
+    }
+  }
+
+  // 6.7 Filter available slots by actual DB bookings (for time selection display)
   if (stateResult.availableSlots && stateResult.availableSlots.length > 0 && stateResult.newState.date) {
     const { filterBookedSlots } = await import('@/lib/ai/booking-state')
     const realSlots = await filterBookedSlots(

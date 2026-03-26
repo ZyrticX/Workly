@@ -308,7 +308,7 @@ function findService(input: string, services: ServiceDef[]): ServiceDef | null {
   return svc || null
 }
 
-function getValidSlots(
+export function getValidSlots(
   duration: number,
   workingHours?: Record<string, unknown> | null,
   dayOfWeek?: number

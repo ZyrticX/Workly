@@ -47,31 +47,28 @@ export async function GET() {
 
       // Update contact stats
       if (apt.contact_id) {
-        // Increment visits
-        await supabase.rpc('increment_contact_visits', {
+        // Increment visits - try RPC first, fallback to manual
+        const rpcResult = await supabase.rpc('increment_contact_visits', {
           p_contact_id: apt.contact_id,
-        }).catch(() => {
+        })
+        if (rpcResult.error) {
           // Fallback: manual increment
-          supabase
+          const { data: contact } = await supabase
             .from('contacts')
             .select('total_visits, total_revenue')
             .eq('id', apt.contact_id)
             .single()
-            .then(({ data: contact }) => {
-              if (contact) {
-                supabase
-                  .from('contacts')
-                  .update({
-                    total_visits: (contact.total_visits || 0) + 1,
-                    total_revenue: (contact.total_revenue || 0) + (apt.price || 0),
-                    status: (contact.total_visits || 0) >= 5 ? 'vip' :
-                            (contact.total_visits || 0) >= 1 ? 'returning' : 'active',
-                  })
-                  .eq('id', apt.contact_id)
-                  .then(() => {})
-              }
-            })
-        })
+          if (contact) {
+            await supabase
+              .from('contacts')
+              .update({
+                total_visits: (contact.total_visits || 0) + 1,
+                status: (contact.total_visits || 0) >= 5 ? 'vip' :
+                        (contact.total_visits || 0) >= 1 ? 'returning' : 'active',
+              })
+              .eq('id', apt.contact_id)
+          }
+        }
 
         // Update revenue
         if (apt.price && apt.price > 0) {
