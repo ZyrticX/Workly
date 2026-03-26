@@ -1293,10 +1293,33 @@ ${stateResult.aiInstruction}
     }
   }
 
-  // 6. Execute action if needed
+  // 6. Execute action if needed — validate params first
   if (parsed.action) {
     const actionParams = parsed.action.params as Record<string, unknown>
+
+    // SAFETY: Never execute book_appointment without all required fields
+    if (parsed.action.type === 'book_appointment') {
+      const hasDate = actionParams.date && typeof actionParams.date === 'string' && actionParams.date.length >= 8
+      const hasTime = actionParams.time && typeof actionParams.time === 'string' && actionParams.time.includes(':')
+      const hasService = actionParams.service && typeof actionParams.service === 'string'
+      if (!hasDate || !hasTime || !hasService) {
+        console.warn('[agent] Blocked book_appointment with missing params:', { date: actionParams.date, time: actionParams.time, service: actionParams.service })
+        // Don't execute — notify owner and ask customer
+        parsed.action = null
+        await supabase.from('notifications').insert({
+          business_id: input.businessId,
+          type: 'system',
+          title: '⚠️ תור לא נשמר',
+          body: `הסוכן אמר ללקוח ${contactCtx.name || input.contactName} שנקבע תור, אבל חסרים פרטים (שעה/שירות). בדוק ידנית.`,
+          metadata: { contact_id: input.contactId, params: actionParams },
+        })
+        if (parsed.text.includes('קבעתי') || parsed.text.includes('מסודר') || parsed.text.includes('נקבע')) {
+          parsed.text = `שנייה ${contactCtx.name || ''}, בודק שהכל מסודר... 🔍`
+        }
+      }
+    }
     try {
+      if (!parsed.action) throw new Error('ACTION_BLOCKED')
       await executeAction(parsed.action, input, settingsResult.data)
 
       // If booking was pending confirmation, NOW confirm to user
@@ -1330,8 +1353,8 @@ ${stateResult.aiInstruction}
           business_id: input.businessId,
           type: 'system',
           title: 'פעולה נכשלה',
-          body: `הסוכן ניסה לבצע "${parsed.action.type}" אך נכשל: ${errMsg}`,
-          metadata: { action: parsed.action, contact_id: input.contactId },
+          body: `הסוכן ניסה לבצע "${parsed.action?.type || 'unknown'}" אך נכשל: ${errMsg}`,
+          metadata: { action: parsed.action || {}, contact_id: input.contactId },
         })
       }
     }
