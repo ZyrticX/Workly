@@ -265,8 +265,13 @@ export function processState(
         }
       }
       skipAI = true
-      const dayName = getDayName(state.date!)
-      aiInstruction = `מעולה ${state.name}! קבעתי לך ${state.service} ליום ${dayName} (${formatDate(state.date!)}) בשעה ${state.time}. אם תצטרך לשנות משהו - פשוט תכתוב לי 🙏`
+      const confirmName = bookingName || state.name || contactName || ''
+      const confirmDate = state.date || ''
+      const confirmTime = state.time || ''
+      const confirmService = state.service || ''
+      const dayName = confirmDate ? getDayName(confirmDate) : ''
+      const dateStr = confirmDate ? formatDate(confirmDate) : ''
+      aiInstruction = `מעולה ${confirmName}! קבעתי לך ${confirmService} ליום ${dayName} (${dateStr}) בשעה ${confirmTime}. אם תצטרך לשנות משהו - פשוט תכתוב לי 🙏`
       return { newState: { step: 'idle' }, aiInstruction, action, skipAI }
     } else if (extracted.confirmation === false || extracted.intent === 'deny') {
       aiInstruction = `הלקוח לא רוצה את התור הזה. אמור לו שאין בעיה, ושאל אם הוא רוצה לקבוע בזמן אחר. תהיה נחמד ולא לוחץ.`

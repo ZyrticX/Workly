@@ -532,6 +532,13 @@ async function executeAction(
         other_relationship?: string | null
         booked_by_contact_name?: string | null
       }
+      if (!params.date || !params.time || !params.service) {
+        throw new ActionError(
+          `MISSING_PARAMS: date=${params.date}, time=${params.time}, service=${params.service}`,
+          'חסרים פרטים לקביעת התור. איזה יום ושעה מתאימים?'
+        )
+      }
+
       if (params.date && params.time && params.service) {
         // Validate date: ensure day-of-week matches the date
         const bookDate = new Date(params.date + 'T12:00:00')
@@ -588,7 +595,7 @@ async function executeAction(
 
         if (service) {
           // Round time to valid interval for this service
-          let timeStr = params.time!
+          let timeStr = params.time || '09:00'
           const [hStr, mStr] = timeStr.split(':')
           const totalMin = parseInt(hStr) * 60 + parseInt(mStr)
           if (totalMin % service.duration !== 0) {
