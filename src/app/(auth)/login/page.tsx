@@ -60,7 +60,7 @@ export default function LoginPage() {
 
       {/* Logo / Header */}
       <div className="text-center space-y-3">
-        <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl object-contain mx-auto" />
+        <img src="/logo.png" alt="Logo" className="w-28 h-28 rounded-2xl object-contain mx-auto" />
         <h1 className="text-2xl font-bold text-text">התחברות</h1>
         <p className="text-text-secondary text-sm">היכנס לחשבון העסקי שלך</p>
       </div>
