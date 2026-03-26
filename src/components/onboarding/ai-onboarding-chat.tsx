@@ -62,6 +62,21 @@ function getDisplayText(text: string): string {
   return text.replace(/```json[\s\S]*?```/, '').trim()
 }
 
+/** Simple markdown to HTML: bold, lists, newlines */
+function renderSimpleMarkdown(text: string): string {
+  return text
+    // Bold: **text** → <strong>text</strong>
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // Numbered lists: 1. text → <br/>1. text
+    .replace(/^(\d+\.)\s/gm, '<br/>$1 ')
+    // Bullet lists: - text → <br/>• text
+    .replace(/^-\s/gm, '<br/>• ')
+    // Double newlines → paragraph break
+    .replace(/\n\n/g, '<br/><br/>')
+    // Single newlines → line break
+    .replace(/\n/g, '<br/>')
+}
+
 // ── Typing Indicator ───────────────────────────────────
 
 function TypingIndicator() {
@@ -408,9 +423,10 @@ export default function AiOnboardingChat({ businessId, onComplete }: AiOnboardin
                     : 'rounded-ts-sm bg-white/80 backdrop-blur-sm border border-white/40 text-gray-800'
                 )}
               >
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {displayText}
-                </p>
+                <div
+                  className="text-sm leading-relaxed [&_strong]:font-bold [&_br]:block"
+                  dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(displayText) }}
+                />
                 <p
                   className={cn(
                     'mt-1 text-[10px]',
