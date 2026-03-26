@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils/cn'
 import {
   LayoutDashboard,
   Building2,
+  Users,
   Smartphone,
   HeartPulse,
   CreditCard,
@@ -18,6 +19,7 @@ import {
 const navItems = [
   { label: 'ראשי', href: '/admin', icon: LayoutDashboard },
   { label: 'עסקים', href: '/admin/businesses', icon: Building2 },
+  { label: 'משתמשים', href: '/admin/users', icon: Users },
   { label: 'מספרים', href: '/admin/phones', icon: Smartphone },
   { label: 'בריאות', href: '/admin/health', icon: HeartPulse },
   { label: 'סימים', href: '/admin/sims', icon: CreditCard },
