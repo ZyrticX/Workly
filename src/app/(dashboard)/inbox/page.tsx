@@ -26,9 +26,9 @@ export default async function InboxPage() {
   }
 
   return (
-    <div className="min-h-full overflow-hidden">
-      <h1 className="text-xl font-bold text-[#1B2E24] mb-3">הודעות</h1>
-      <div className="h-[calc(100dvh-12rem)] lg:h-[calc(100dvh-6rem)] overflow-hidden">
+    <div className="h-full overflow-hidden flex flex-col">
+      <h1 className="text-xl font-bold text-[#1B2E24] mb-2 px-1 shrink-0">הודעות</h1>
+      <div className="flex-1 min-h-0 overflow-hidden">
         <InboxShell initialConversations={conversations} />
       </div>
     </div>
