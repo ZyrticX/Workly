@@ -116,13 +116,6 @@ export default function LoginPage() {
         </button>
       </form>
 
-      {/* Register link */}
-      <p className="text-center text-sm text-text-secondary">
-        אין לך חשבון?{' '}
-        <Link href="/register" className="text-[var(--color-primary)] font-medium hover:text-[var(--color-primary-dark)] transition-colors">
-          הרשם עכשיו
-        </Link>
-      </p>
     </div>
   )
 }
