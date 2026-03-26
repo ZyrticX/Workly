@@ -52,11 +52,34 @@ export function PhonesClient({ phones, counts }: PhonesClientProps) {
         })
         if (res.ok) {
           setActionMessage('בקשת חיבור מחדש נשלחה')
+          window.location.reload()
         } else {
           setActionMessage('שגיאה בחיבור מחדש')
         }
       } catch {
         setActionMessage('שגיאה בחיבור מחדש')
+      }
+    })
+  }
+
+  async function handleDisconnect(phoneId: string) {
+    if (!confirm('בטוח שרוצה לנתק את המספר?')) return
+    setActionMessage(null)
+    startTransition(async () => {
+      try {
+        const res = await fetch('/api/admin/phone-action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phoneId, action: 'disconnect' }),
+        })
+        if (res.ok) {
+          setActionMessage('המספר נותק בהצלחה')
+          window.location.reload()
+        } else {
+          setActionMessage('שגיאה בניתוק')
+        }
+      } catch {
+        setActionMessage('שגיאה בניתוק')
       }
     })
   }
@@ -275,7 +298,7 @@ export function PhonesClient({ phones, counts }: PhonesClientProps) {
                           ? new Date(phone.last_health_check).toLocaleString('he-IL')
                           : '-'}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 flex gap-2">
                         {phone.status === 'disconnected' && (
                           <button
                             onClick={() => handleReconnect(phone.id)}
@@ -283,6 +306,24 @@ export function PhonesClient({ phones, counts }: PhonesClientProps) {
                             className="text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors disabled:opacity-50"
                           >
                             חבר מחדש
+                          </button>
+                        )}
+                        {phone.status === 'connected' && (
+                          <button
+                            onClick={() => handleDisconnect(phone.id)}
+                            disabled={isPending}
+                            className="text-xs font-medium text-red-500 hover:text-red-700 transition-colors disabled:opacity-50"
+                          >
+                            נתק
+                          </button>
+                        )}
+                        {phone.status === 'pending_qr' && (
+                          <button
+                            onClick={() => handleReconnect(phone.id)}
+                            disabled={isPending}
+                            className="text-xs font-medium text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] transition-colors disabled:opacity-50"
+                          >
+                            סרוק QR
                           </button>
                         )}
                       </td>
