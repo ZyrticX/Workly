@@ -342,10 +342,10 @@ ${bizPersonality.phrases.map(p => `- "${p}"`).join('\n')}
 - אל תקבע/י תור בלי שם! אם השם לא ידוע, שאל/י קודם.
 - לעולם אל תקבע/י 2 תורים שחופפים! אם הזמן תפוס, הציע/י חלופה.
 - אם לקוח רוצה לקבוע תור למישהו אחר (אמא, חבר, בן זוג) — שאל/י את שם האדם ואת השירות המבוקש, וקבע/י תור נפרד עבורו. כל תור הוא עבור אדם אחד.
-- אם השעה תפוסה — אמור/י פשוט "השעה הזאת תפוסה" והצע/י שעות חלופות. אף פעם אל תזכיר/י שיש לקוח אחר, מי הוא, או מה השעה שלו. פשוט "תפוסה, מה עם X או Y?"
-- **חיסיון מוחלט**: לעולם אל תחשוף/י שמות, מספרי טלפון, שעות, או כל פרט של לקוחות אחרים. אם שואלים "מי קבע?" — "אני לא יכול/ה למסור פרטים, אבל אני יכול/ה לבדוק שעות פנויות."
-- אם לקוח מבקש להחליף תורים עם מישהו אחר — אמור/י "רגע, מעביר/ה לצוות" ועשה/י escalation. אל תנסה/י לטפל בזה לבד.
-- אם לקוח מבקש משהו שלא יכול/ה — אל תגיד/י "אני לא יכול". אמור/י "רגע, מעביר/ה לצוות" וסמן/י escalation.
+- אם השעה תפוסה — אמור/י "השעה תפוסה, בודק/ת אם אפשר לפנות. בינתיים, רוצה לנסות שעה אחרת?" אל תזכיר/י מי תפוס, מה השם שלו, או כל פרט אחר.
+- **חיסיון מוחלט**: לעולם אל תחשוף/י שמות, מספרי טלפון, שעות, או כל פרט של לקוחות אחרים. אם שואלים "מי קבע?" — "אני לא יכול/ה למסור פרטים, אבל אני בודק/ת אם אפשר לפנות."
+- אתה יכול/ה לשלוח הודעות ללקוחות (תזכורות, ביטולים, בקשות הזזה) — אבל אף פעם לא לחשוף פרטים של לקוח אחד ללקוח אחר.
+- אם לקוח מבקש משהו שלא יכול/ה — אל תגיד/י "אני לא יכול". אמור/י "רגע, בודק/ת" או "מעביר/ה לצוות" וסמן/י escalation.
 
 ## כללי זמנים לתורים:
 - תורים מתקבלים רק בשעות שמתחלקות לפי משך השירות.
@@ -608,16 +608,44 @@ async function executeAction(
             .limit(1)
 
           if (conflicts && conflicts.length > 0) {
-            // Notify business owner (internal only — never expose to customer)
+            const conflictApt = conflicts[0]
+            const conflictContactData = conflictApt.contacts as { wa_id?: string; phone?: string } | null
+
+            // Send a GENERIC message to the existing customer — NO details about who wants the slot
+            if (conflictContactData?.wa_id) {
+              try {
+                const { data: phoneNum } = await supabase
+                  .from('phone_numbers')
+                  .select('session_id')
+                  .eq('business_id', input.businessId)
+                  .eq('status', 'connected')
+                  .single()
+
+                if (phoneNum?.session_id) {
+                  const { whatsapp } = await import('@/lib/waha/provider')
+                  const chatId = conflictContactData.wa_id
+                  // Generic message — no mention of other customer, no details
+                  await whatsapp.sendMessage(
+                    phoneNum.session_id,
+                    chatId,
+                    `היי 👋 יש אפשרות להזיז את התור שלך לשעה אחרת? אם כן, שלח/י לנו באיזו שעה נוח ונסדר 🙏`
+                  )
+                }
+              } catch (sendErr) {
+                console.error('[agent] Failed to send reschedule request:', sendErr)
+              }
+            }
+
+            // Internal notification for dashboard
             await supabase.from('notifications').insert({
               business_id: input.businessId,
               type: 'system',
-              title: 'שעה תפוסה',
-              body: `${input.contactName} רצה תור ב-${timeStr} (${params.date}) אבל השעה כבר תפוסה.`,
-              metadata: { requesting_contact: input.contactId },
+              title: 'שעה תפוסה — נשלחה בקשת הזזה',
+              body: `${input.contactName} רצה תור ב-${timeStr} (${params.date}). נשלחה בקשה ללקוח הקיים להזיז.`,
+              metadata: { requesting_contact: input.contactId, existing_appointment: conflictApt.id },
             })
 
-            throw new ActionError('TIME_SLOT_CONFLICT', 'השעה הזאת כבר תפוסה. רוצה לנסות שעה אחרת?')
+            throw new ActionError('TIME_SLOT_CONFLICT', 'השעה הזאת תפוסה. שלחנו בקשה לבדוק אם אפשר לפנות. בינתיים, רוצה לנסות שעה אחרת?')
           }
 
           // Update contact name if we learned it during conversation
