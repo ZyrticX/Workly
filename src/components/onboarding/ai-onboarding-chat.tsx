@@ -242,6 +242,7 @@ export default function AiOnboardingChat({ businessId, onComplete }: AiOnboardin
   const [saving, setSaving] = useState(false)
   const [completed, setCompleted] = useState(false)
   const [error, setError] = useState('')
+  const [loadingHistory, setLoadingHistory] = useState(true)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -252,20 +253,58 @@ export default function AiOnboardingChat({ businessId, onComplete }: AiOnboardin
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, isTyping])
 
-  // Send initial greeting from AI
+  // Save messages to DB whenever they change
+  useEffect(() => {
+    if (messages.length === 0 || loadingHistory) return
+    const saveToDb = async () => {
+      try {
+        await fetch('/api/ai/onboarding-chat', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ businessId, chatHistory: messages }),
+        })
+      } catch { /* silent */ }
+    }
+    saveToDb()
+  }, [messages, businessId, loadingHistory])
+
+  // Load chat history from DB on mount, or show greeting
   useEffect(() => {
     if (initializedRef.current) return
     initializedRef.current = true
 
-    const greeting: ChatMessage = {
-      id: 'greeting',
-      role: 'assistant',
-      content:
-        'היי! אני העוזר החכם שלך. בוא נגדיר את העסק שלך ב-2 דקות.\n\nקודם כל, ספר לי - מה סוג העסק שלך?',
-      created_at: new Date().toISOString(),
+    const loadHistory = async () => {
+      try {
+        const res = await fetch(`/api/ai/onboarding-chat?businessId=${businessId}`)
+        if (res.ok) {
+          const data = await res.json()
+          if (data.chatHistory && data.chatHistory.length > 0) {
+            setMessages(data.chatHistory)
+            // Check if there's already extracted data
+            const lastAiMsg = [...data.chatHistory].reverse().find((m: ChatMessage) => m.role === 'assistant')
+            if (lastAiMsg) {
+              const parsed = extractJsonFromResponse(lastAiMsg.content)
+              if (parsed) setExtractedData(parsed)
+            }
+            setLoadingHistory(false)
+            return
+          }
+        }
+      } catch { /* ignore */ }
+
+      // No history — show greeting
+      const greeting: ChatMessage = {
+        id: 'greeting',
+        role: 'assistant',
+        content: 'היי! 👋 בוא נגדיר את העסק שלך ב-2 דקות.\n\nמה סוג העסק שלך?',
+        created_at: new Date().toISOString(),
+      }
+      setMessages([greeting])
+      setLoadingHistory(false)
     }
-    setMessages([greeting])
-  }, [])
+
+    loadHistory()
+  }, [businessId])
 
   const sendMessage = useCallback(
     async (text: string) => {

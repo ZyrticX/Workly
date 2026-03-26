@@ -62,6 +62,58 @@ interface ChatMessage {
   content: string
 }
 
+// GET — Load chat history from onboarding_progress
+export async function GET(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const businessId = req.nextUrl.searchParams.get('businessId')
+    if (!businessId) return NextResponse.json({ error: 'Missing businessId' }, { status: 400 })
+
+    const { data } = await supabase
+      .from('onboarding_progress')
+      .select('steps_data')
+      .eq('business_id', businessId)
+      .single()
+
+    const chatHistory = (data?.steps_data as Record<string, unknown>)?.chatHistory || null
+    return NextResponse.json({ chatHistory })
+  } catch {
+    return NextResponse.json({ chatHistory: null })
+  }
+}
+
+// PUT — Save chat history to onboarding_progress
+export async function PUT(req: NextRequest) {
+  try {
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { businessId, chatHistory } = await req.json()
+    if (!businessId) return NextResponse.json({ error: 'Missing businessId' }, { status: 400 })
+
+    // Merge with existing steps_data
+    const { data: existing } = await supabase
+      .from('onboarding_progress')
+      .select('steps_data')
+      .eq('business_id', businessId)
+      .single()
+
+    const currentData = (existing?.steps_data as Record<string, unknown>) || {}
+    await supabase
+      .from('onboarding_progress')
+      .update({ steps_data: { ...currentData, chatHistory } })
+      .eq('business_id', businessId)
+
+    return NextResponse.json({ ok: true })
+  } catch {
+    return NextResponse.json({ error: 'Failed to save' }, { status: 500 })
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient()
