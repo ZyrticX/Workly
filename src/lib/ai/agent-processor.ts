@@ -269,6 +269,28 @@ ${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unk
     }
   }
 
+  // 6.8 Guard cancel/reschedule — verify appointment exists before executing
+  if (stateResult.action?.type === 'cancel_appointment' || stateResult.action?.type === 'reschedule_appointment') {
+    const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+    const nowStr = `${israelNow.getFullYear()}-${String(israelNow.getMonth() + 1).padStart(2, '0')}-${String(israelNow.getDate()).padStart(2, '0')}T${String(israelNow.getHours()).padStart(2, '0')}:${String(israelNow.getMinutes()).padStart(2, '0')}:00`
+
+    const { data: existingApt } = await supabase
+      .from('appointments')
+      .select('id')
+      .eq('contact_id', input.contactId)
+      .eq('business_id', input.businessId)
+      .in('status', ['confirmed', 'pending'])
+      .gte('start_time', nowStr)
+      .order('start_time')
+      .limit(1)
+
+    if (!existingApt || existingApt.length === 0) {
+      stateResult.action = null
+      stateResult.skipAI = false
+      stateResult.aiInstruction = 'אין תור קיים לביטול או להזזה. שאל את הלקוח אם רוצה לקבוע תור חדש.'
+    }
+  }
+
   // Save new state
   await saveBookingState(input.conversationId, stateResult.newState)
 

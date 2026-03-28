@@ -357,57 +357,67 @@ export async function executeAction(
     }
 
     case 'reschedule_appointment': {
-      // Cancel the nearest upcoming appointment, then book a new one
+      // ATOMIC: Insert new FIRST, cancel old AFTER (if insert fails, old stays)
       const rParams = action.params as { service?: string; date?: string; time?: string }
 
-      // Cancel existing
+      // 1. Find existing appointment (don't cancel yet!)
       const { data: upcoming } = await supabase
         .from('appointments')
-        .select('id')
+        .select('id, service_type, duration_minutes')
         .eq('business_id', input.businessId)
         .eq('contact_id', input.contactId)
-        .eq('status', 'confirmed')
-        .gte('start_time', new Date().toISOString())
+        .in('status', ['confirmed', 'pending'])
+        .gte('start_time', new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }) + 'T00:00:00')
         .order('start_time', { ascending: true })
         .limit(1)
         .single()
 
-      if (upcoming) {
-        await supabase
-          .from('appointments')
-          .update({ status: 'cancelled' })
-          .eq('id', upcoming.id)
+      if (!upcoming) {
+        throw new ActionError('NO_APPOINTMENT', 'לא מצאתי תור קיים להזזה. רוצה לקבוע תור חדש?')
       }
 
-      // Book new one
-      if (rParams.date && rParams.time && rParams.service) {
+      // 2. Create new appointment FIRST (before cancelling old)
+      if (rParams.date && rParams.time) {
         const services = (settings?.services as Array<{ name: string; duration: number; price: number }>) || []
-        let service = services.find((s) => s.name === rParams.service)
-        if (!service && rParams.service) service = services.find((s) => s.name.includes(rParams.service!) || rParams.service!.includes(s.name))
+        const serviceName = rParams.service || upcoming.service_type
+        let service = services.find((s) => s.name === serviceName)
+        if (!service && serviceName) service = services.find((s) => s.name.includes(serviceName) || serviceName.includes(s.name))
         if (!service && services.length === 1) service = services[0]
-        if (service) {
-          // Save Israel time directly (no timezone conversion)
-          const newStart = `${rParams.date}T${rParams.time}:00`
-          const newEnd = addMinutesToTimeString(`${rParams.date}T${rParams.time}:00`, service.duration)
-          await supabase.from('appointments').insert({
-            business_id: input.businessId,
-            contact_id: input.contactId,
-            service_type: rParams.service,
-            start_time: newStart,
-            end_time: newEnd,
-            duration_minutes: service.duration,
-            price: service.price,
-            status: 'confirmed',
-          })
 
-          await supabase.from('notifications').insert({
-            business_id: input.businessId,
-            type: 'rescheduled_appointment',
-            title: 'תור הוזז',
-            body: `${input.contactName} הזיז/ה תור ל${rParams.service} לתאריך ${rParams.date} בשעה ${rParams.time}`,
-            metadata: { contact_id: input.contactId, service: rParams.service, date: rParams.date, time: rParams.time },
-          })
+        const duration = service?.duration || upcoming.duration_minutes || 30
+        const newStart = `${rParams.date}T${rParams.time}:00`
+        const newEnd = addMinutesToTimeString(newStart, duration)
+
+        const { error: insertError } = await supabase.from('appointments').insert({
+          business_id: input.businessId,
+          contact_id: input.contactId,
+          service_type: serviceName,
+          start_time: newStart,
+          end_time: newEnd,
+          duration_minutes: duration,
+          price: service?.price || 0,
+          status: 'confirmed',
+        })
+
+        if (insertError) {
+          // Insert failed — DON'T cancel old appointment! Customer keeps their existing booking.
+          throw new ActionError('DB_INSERT_ERROR', 'לא הצלחתי לקבוע תור חדש. התור הקיים שלך נשמר.')
         }
+
+        // 3. Only NOW cancel old appointment (new one is safe in DB)
+        await supabase.from('appointments')
+          .update({ status: 'cancelled' })
+          .eq('id', upcoming.id)
+
+        await supabase.from('notifications').insert({
+          business_id: input.businessId,
+          type: 'rescheduled_appointment',
+          title: 'תור הוזז',
+          body: `${input.contactName} הזיז/ה תור ל${serviceName} לתאריך ${rParams.date} בשעה ${rParams.time}`,
+          metadata: { contact_id: input.contactId, service: serviceName, date: rParams.date, time: rParams.time },
+        })
+      } else {
+        throw new ActionError('MISSING_PARAMS', 'חסרים תאריך או שעה להזזת התור. לאיזה יום ושעה תרצה להזיז?')
       }
       break
     }
