@@ -69,6 +69,13 @@ export function processState(
       }
     }
 
+    // Auto-select service if only 1 exists (no need to ask)
+    if (!state.service && services.length === 1) {
+      state.service = services[0].name
+      state.serviceDuration = services[0].duration
+      state.servicePrice = services[0].price
+    }
+
     // Use known name from DB — but only if it's a real name, not a placeholder
     const isPlaceholderName = !contactName
       || /^\d+$/.test(contactName)
@@ -337,16 +344,24 @@ export function processState(
 // ── Helpers ──────────────────────────────────────
 
 function findService(input: string, services: ServiceDef[]): ServiceDef | null {
+  // If only 1 service, always return it (no ambiguity)
+  if (services.length === 1) return services[0]
   if (!input) return null
+
   const lower = input.trim()
+  // Exact match
   let svc = services.find(s => s.name === lower)
+  // Partial match
   if (!svc) svc = services.find(s => s.name.includes(lower) || lower.includes(s.name))
   // Fuzzy: check if any word matches
   if (!svc) {
     const words = lower.split(/\s+/)
     svc = services.find(s => words.some(w => w.length > 2 && s.name.includes(w)))
   }
-  if (!svc && services.length === 1) svc = services[0]
+  // Common aliases: "כרגיל" / "רגיל" / "הרגיל" → first service
+  if (!svc && /כרגיל|רגיל|הרגיל|כמו תמיד|כמו שתמיד/.test(lower)) {
+    svc = services[0]
+  }
   return svc || null
 }
 
