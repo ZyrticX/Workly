@@ -5,6 +5,7 @@ import { buildSystemPrompt } from './prompt-builder'
 import { ERROR_MESSAGES, ActionError } from './error-messages'
 import { executeAction, formatDateHebrew } from './action-executor'
 import { logError } from '@/lib/utils/error-logger'
+import { cached, CACHE_KEYS, CACHE_TTL } from '@/lib/cache/redis'
 
 // ── Main Agent Processor ────────────────────────────────
 
@@ -14,36 +15,55 @@ export async function processAIAgent(
   const supabase = createServiceClient()
 
   try {
-  // 1. Load business context + contact info in parallel
-  const [businessResult, settingsResult, personaResult, historyResult, contactResult] =
+  // 1. Load business context (cached) + fresh data in parallel
+  const [businessData, settingsData, personaData, historyResult, contactResult] =
     await Promise.all([
-      supabase
-        .from('businesses')
-        .select('id, name, business_type')
-        .eq('id', input.businessId)
-        .single(),
-      supabase
-        .from('business_settings')
-        .select('id, business_id, services, working_hours, cancellation_policy, ai_config, ai_advanced')
-        .eq('business_id', input.businessId)
-        .single(),
-      supabase
-        .from('ai_personas')
-        .select('id, business_id, tone, emoji_usage, style_examples, system_prompt')
-        .eq('business_id', input.businessId)
-        .single(),
+      // Cached: business info (rarely changes)
+      cached(
+        CACHE_KEYS.businessInfo(input.businessId),
+        async () => {
+          const { data } = await supabase.from('businesses').select('id, name, business_type').eq('id', input.businessId).single()
+          return data
+        },
+        CACHE_TTL.SETTINGS
+      ),
+      // Cached: business settings (rarely changes)
+      cached(
+        CACHE_KEYS.businessSettings(input.businessId),
+        async () => {
+          const { data } = await supabase.from('business_settings').select('id, business_id, services, working_hours, cancellation_policy, ai_config, ai_advanced').eq('business_id', input.businessId).single()
+          return data
+        },
+        CACHE_TTL.SETTINGS
+      ),
+      // Cached: AI persona (rarely changes)
+      cached(
+        CACHE_KEYS.aiPersona(input.businessId),
+        async () => {
+          const { data } = await supabase.from('ai_personas').select('id, business_id, tone, emoji_usage, style_examples, system_prompt').eq('business_id', input.businessId).single()
+          return data
+        },
+        CACHE_TTL.PERSONA
+      ),
+      // NOT cached: messages (always fresh)
       supabase
         .from('messages')
         .select('content, direction, sender_type')
         .eq('conversation_id', input.conversationId)
         .order('created_at', { ascending: false })
         .limit(20),
+      // NOT cached: contact (can change mid-conversation)
       supabase
         .from('contacts')
         .select('name, status, phone, total_visits')
         .eq('id', input.contactId)
         .single(),
     ])
+
+  // Wrap cached results to match original { data } format
+  const businessResult = { data: businessData }
+  const settingsResult = { data: settingsData }
+  const personaResult = { data: personaData }
 
   // Build contact context for the AI
   const contactCtx = contactResult.data ? {
