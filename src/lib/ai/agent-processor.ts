@@ -74,60 +74,78 @@ export async function processAIAgent(
     || knownContactName.startsWith('972')
     || /^\+?\d{7,}/.test(knownContactName)
 
+  // Build date lookup table in Israel timezone (precise, no timezone bugs)
+  const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+  const israelToday = `${israelNow.getFullYear()}-${String(israelNow.getMonth() + 1).padStart(2, '0')}-${String(israelNow.getDate()).padStart(2, '0')}`
+  const israelTime = `${String(israelNow.getHours()).padStart(2, '0')}:${String(israelNow.getMinutes()).padStart(2, '0')}`
+  const israelDayOfWeek = israelNow.getDay() // 0=Sunday
+  const hebrewDayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+  const todayHebrew = hebrewDayNames[israelDayOfWeek]
+
+  // Build next 14 days lookup
+  const dayLookup: string[] = []
+  for (let i = 0; i <= 13; i++) {
+    const d = new Date(israelNow)
+    d.setDate(d.getDate() + i)
+    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const dayName = hebrewDayNames[d.getDay()]
+    const label = i === 0 ? 'היום' : i === 1 ? 'מחר' : `יום ${dayName}`
+    dayLookup.push(`${label} (${dayName}) = ${dateStr}`)
+  }
+
   const extractionPrompt = `IMPORTANT: Respond ONLY in valid JSON. Extract information from the user's message.
 You are extracting data for a booking system for "${businessResult.data?.name || 'business'}".
 
 Available services: ${services.map(s => s.name).join(', ')}
 Current booking step: ${bookingState.step}
-${!contactNameIsPlaceholder ? `Known customer name from DB: ${knownContactName} (use this as the name if the customer doesn't provide a different one)` : 'Customer name is NOT known yet — extract it from the message if mentioned.'}
-Today: ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
-Current time in Israel: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false })}
-IMPORTANT: If the customer asks for today, only offer times AFTER the current time. Don't offer 09:00 if it's already 17:00.
+${!contactNameIsPlaceholder ? `Known customer name from DB: ${knownContactName}` : 'Customer name is NOT known yet — extract it from the message if mentioned.'}
 
-Day lookup (next occurrence of each day):
-${(() => {
-  // Get current date in Israel timezone
-  const now = new Date()
-  const israelDateStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
-  const israelDayStr = now.toLocaleDateString('en-US', { timeZone: 'Asia/Jerusalem', weekday: 'long' })
-  const dayMap: Record<string, number> = { Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6 }
-  const todayDow = dayMap[israelDayStr] ?? 0
-  const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+## CRITICAL — Date & Time Reference (Israel timezone):
+Today is: ${israelToday} (יום ${todayHebrew})
+Current time: ${israelTime}
 
-  return [0, 1, 2, 3, 4, 5, 6].map(targetDay => {
-    let diff = (targetDay - todayDow + 7) % 7
-    if (diff === 0) diff = 7 // next week if same day
-    const future = new Date(israelDateStr + 'T12:00:00')
-    future.setDate(future.getDate() + diff)
-    return `${hebrewDays[targetDay]} = ${future.toLocaleDateString('en-CA')}`
-  }).join('\n')
-})()}
-היום = ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })}
-מחר = ${(() => { const t = new Date(); const isr = new Date(t.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }) + 'T12:00:00'); isr.setDate(isr.getDate() + 1); return isr.toLocaleDateString('en-CA'); })()}
+## Date lookup — USE THESE EXACT DATES, DO NOT CALCULATE YOUR OWN:
+${dayLookup.join('\n')}
 
-Extract these fields from the message:
+## RULES FOR DATE EXTRACTION:
+- "היום" = ${israelToday}
+- "מחר" = ${dayLookup[1]?.split(' = ')[1] || ''}
+- "יום ראשון" = find the NEXT Sunday from the list above
+- "יום שני" = find the NEXT Monday from the list above
+- etc.
+- NEVER invent a date. ONLY use dates from the lookup table above.
+- If the customer says a date like "ב-5 לחודש" or "5.4", convert to YYYY-MM-DD format.
+- If you can't determine the date, return null.
+
+## RULES FOR TIME EXTRACTION:
+- "ב-3" or "בשלוש" = 15:00 (afternoon, not 03:00)
+- "ב-9" or "בתשע" = 09:00
+- "ב-10 בבוקר" = 10:00
+- "ב-8 בערב" = 20:00
+- Time must be in HH:MM format (24-hour). Examples: 09:00, 14:30, 17:00
+- If you can't determine the time, return null.
+- NEVER guess a time the customer didn't mention.
+
+Extract these fields:
 {
   "intent": "book|cancel|reschedule|confirm|deny|provide_info|greeting|question|other",
   "service": "service name if mentioned, or null",
   "name": "person name if mentioned, or null",
-  "gender": "male|female|null — detect from Hebrew grammar, name, or context",
-  "date": "YYYY-MM-DD if a date/day is mentioned, or null",
-  "time": "HH:MM if time mentioned, or null",
+  "gender": "male|female|null",
+  "date": "YYYY-MM-DD from the lookup table above, or null",
+  "time": "HH:MM in 24h format, or null",
   "notes": "any notes/comments, or null",
   "confirmation": true/false/null,
-  "for_other": true if booking for someone else (לאמא/לחבר/לבן זוג/למישהו), false otherwise,
-  "other_name": "name of the other person if mentioned, or null",
-  "other_relationship": "mother|father|friend|spouse|child|sibling|other — relationship if mentioned, or null"
+  "for_other": true/false,
+  "other_name": "name or null",
+  "other_relationship": "relationship or null"
 }
 
-Rules:
-- "כן", "בטח", "מאשר", "יאללה", "סבבה", "אוקיי" → confirmation: true
-- "לא", "ביטול", "לא רוצה" → confirmation: false
-- "מחר" → tomorrow's date
-- "היום" → today's date
-- If step is "collecting_name" and message is a short word (1-3 words), it's probably a name
-- Gender detection: "רוצה" (male), "רוצה" can be both, "רציתי" → check context. Names like דוד/משה/יוסי = male. שרה/מיכל/נועה = female.
-${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unknown — try to detect from message'}`
+Additional rules:
+- "כן"/"בטח"/"מאשר"/"יאללה"/"סבבה" → confirmation: true
+- "לא"/"ביטול" → confirmation: false
+- If step is "collecting_name" and message is 1-3 words, it's probably a name
+${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
 
   // 4. Send to AI for extraction only
   const conversationHistory = (historyResult.data || [])
@@ -148,11 +166,56 @@ ${contactCtx.gender ? `Known gender from DB: ${contactCtx.gender}` : 'Gender unk
   try {
     const cleaned = rawResponse.replace(/```json\n?|```/g, '').trim()
     extracted = JSON.parse(cleaned)
+    // Log extraction for debugging
+    console.log(`[agent] Extracted: intent=${extracted.intent}, date=${extracted.date || '-'}, time=${extracted.time || '-'}, service=${extracted.service || '-'}, name=${extracted.name || '-'}`)
   } catch {
+    console.warn(`[agent] Failed to parse AI extraction: "${rawResponse.substring(0, 100)}"`)
     extracted = { intent: 'other' }
   }
 
-  // 5.5 Auto-update gender if detected and not already known
+  // 5.5 VALIDATE extracted date and time (prevent AI hallucinations)
+  if (extracted.date) {
+    // Validate date format: must be YYYY-MM-DD
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(extracted.date)) {
+      console.warn(`[agent] Invalid date format from AI: "${extracted.date}" — clearing`)
+      extracted.date = undefined as unknown as string
+    } else {
+      // Validate date is real (not Feb 30, etc.)
+      const testDate = new Date(extracted.date + 'T12:00:00')
+      if (isNaN(testDate.getTime())) {
+        console.warn(`[agent] Invalid date from AI: "${extracted.date}" — clearing`)
+        extracted.date = undefined as unknown as string
+      }
+      // Validate date is not in the past
+      if (extracted.date && extracted.date < israelToday) {
+        console.warn(`[agent] Past date from AI: "${extracted.date}" (today: ${israelToday}) — clearing`)
+        extracted.date = undefined as unknown as string
+      }
+    }
+  }
+  if (extracted.time) {
+    // Validate time format: must be HH:MM
+    if (!/^\d{2}:\d{2}$/.test(extracted.time)) {
+      // Try to fix common formats: "9:00" → "09:00"
+      const timeMatch = extracted.time.match(/^(\d{1,2}):(\d{2})$/)
+      if (timeMatch) {
+        extracted.time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
+      } else {
+        console.warn(`[agent] Invalid time format from AI: "${extracted.time}" — clearing`)
+        extracted.time = undefined as unknown as string
+      }
+    }
+    // Validate time range (00:00-23:59)
+    if (extracted.time) {
+      const [h, m] = extracted.time.split(':').map(Number)
+      if (h < 0 || h > 23 || m < 0 || m > 59) {
+        console.warn(`[agent] Invalid time range from AI: "${extracted.time}" — clearing`)
+        extracted.time = undefined as unknown as string
+      }
+    }
+  }
+
+  // 5.6 Auto-update gender if detected and not already known
   const extractedAny = extracted as unknown as Record<string, unknown>
   if (extractedAny.gender && !contactCtx.gender) {
     const detectedGender = extractedAny.gender as string
