@@ -76,13 +76,44 @@ export class WahaClient {
 
   // ── Messaging ─────────────────────────────────────────
 
+  async startTyping(session: string, to: string): Promise<void> {
+    const chatId = to.includes('@') ? to : `${to}@c.us`
+    try {
+      await this.request('/api/startTyping', {
+        method: 'POST',
+        body: JSON.stringify({ session, chatId }),
+      })
+    } catch {
+      // Typing indicator is non-critical — don't fail if it errors
+    }
+  }
+
+  async stopTyping(session: string, to: string): Promise<void> {
+    const chatId = to.includes('@') ? to : `${to}@c.us`
+    try {
+      await this.request('/api/stopTyping', {
+        method: 'POST',
+        body: JSON.stringify({ session, chatId }),
+      })
+    } catch {
+      // Non-critical
+    }
+  }
+
   async sendText(
     session: string,
     to: string,
     text: string
   ): Promise<WahaSendResult> {
-    // If 'to' already has @c.us or @lid suffix, use as-is; otherwise add @c.us
     const chatId = to.includes('@') ? to : `${to}@c.us`
+
+    // Show typing indicator before sending (natural delay)
+    await this.startTyping(session, to)
+    // Wait proportional to message length (min 1s, max 4s)
+    const typingDelay = Math.min(4000, Math.max(1000, text.length * 30))
+    await new Promise(resolve => setTimeout(resolve, typingDelay))
+    await this.stopTyping(session, to)
+
     return this.request<WahaSendResult>('/api/sendText', {
       method: 'POST',
       body: JSON.stringify({
