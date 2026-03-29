@@ -370,7 +370,7 @@ export async function POST(req: NextRequest) {
             source: 'webhook',
             severity: 'critical',
             message: aiError instanceof Error ? aiError.message : 'AI agent crash',
-            contactName: displayName || from,
+            contactName: contact?.name || from,
             details: { conversationId: convId, message: messageContent?.slice(0, 100) },
           })
 
