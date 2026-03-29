@@ -83,15 +83,20 @@ export async function processAIAgent(
   const hebrewDayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
   const todayHebrew = hebrewDayNames[israelDayOfWeek]
 
-  // Build next 14 days lookup
+  // Build next 14 days lookup — today FIRST, clearly marked
   const dayLookup: string[] = []
   for (let i = 0; i <= 13; i++) {
     const d = new Date(israelNow)
     d.setDate(d.getDate() + i)
     const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
     const dayName = hebrewDayNames[d.getDay()]
-    const label = i === 0 ? 'היום' : i === 1 ? 'מחר' : `יום ${dayName}`
-    dayLookup.push(`${label} (${dayName}) = ${dateStr}`)
+    if (i === 0) {
+      dayLookup.push(`*** היום = ${dateStr} (${dayName}) ← USE THIS FOR "היום" AND "${dayName}"`)
+    } else if (i === 1) {
+      dayLookup.push(`*** מחר = ${dateStr} (${dayName})`)
+    } else {
+      dayLookup.push(`${dayName} = ${dateStr} (in ${i} days)`)
+    }
   }
 
   const extractionPrompt = `IMPORTANT: Respond ONLY in valid JSON. Extract information from the user's message.
@@ -108,15 +113,16 @@ Current time: ${israelTime}
 ## Date lookup — USE THESE EXACT DATES, DO NOT CALCULATE YOUR OWN:
 ${dayLookup.join('\n')}
 
-## RULES FOR DATE EXTRACTION:
+## RULES FOR DATE EXTRACTION — VERY IMPORTANT:
 - "היום" = ${israelToday}
-- "מחר" = ${dayLookup[1]?.split(' = ')[1] || ''}
-- "יום ראשון" = find the NEXT Sunday from the list above
-- "יום שני" = find the NEXT Monday from the list above
-- etc.
+- "מחר" = ${dayLookup[1]?.split(' = ')[1]?.split(' ')[0] || ''}
+- If customer says a day name (e.g. "יום ראשון") AND today IS that day → use TODAY's date (${israelToday}), NOT next week!
+- If customer says a day name and today is NOT that day → use the NEAREST future occurrence from the list
+- CRITICAL: Today is ${todayHebrew} (${israelToday}). If someone says "${todayHebrew}" they mean TODAY.
+- "29.3" or "29/3" or "ב-29" = ${israelNow.getFullYear()}-03-29
 - NEVER invent a date. ONLY use dates from the lookup table above.
-- If the customer says a date like "ב-5 לחודש" or "5.4", convert to YYYY-MM-DD format.
 - If you can't determine the date, return null.
+- NEVER say a date "already passed" if it's today's date!
 
 ## RULES FOR TIME EXTRACTION:
 - "ב-3" or "בשלוש" = 15:00 (afternoon, not 03:00)
@@ -311,6 +317,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
 
   // 6.7 Filter available slots by actual DB bookings (for time selection display)
   if (stateResult.availableSlots && stateResult.availableSlots.length > 0 && stateResult.newState.date) {
+    console.log(`[agent] Filtering slots: ${stateResult.availableSlots.length} theoretical for ${stateResult.newState.date}`)
     const { filterBookedSlots } = await import('@/lib/ai/booking-state')
     const realSlots = await filterBookedSlots(
       input.businessId,
@@ -319,6 +326,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
       stateResult.newState.serviceDuration || 30
     )
 
+    console.log(`[agent] After filtering: ${realSlots.length} real slots available (from ${stateResult.availableSlots.length} theoretical)`)
     if (realSlots.length === 0) {
       // All slots are booked — offer waitlist
       stateResult.newState.step = 'waitlist_offer'
