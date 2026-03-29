@@ -48,28 +48,8 @@ export async function GET() {
       completedCount++
 
       // NOTE: Revenue and visits are NOT updated here.
-      // They update only when business owner confirms the customer actually came
-      // (via manual "mark as completed" in calendar, or PATCH /api/appointments)
+      // They update only when business owner confirms via PATCH /api/appointments
       // This prevents counting revenue for no-shows.
-
-        // Update revenue
-        if (apt.price && apt.price > 0) {
-          const { data: contact } = await supabase
-            .from('contacts')
-            .select('total_revenue')
-            .eq('id', apt.contact_id)
-            .single()
-
-          if (contact) {
-            await supabase
-              .from('contacts')
-              .update({
-                total_revenue: (contact.total_revenue || 0) + apt.price,
-              })
-              .eq('id', apt.contact_id)
-          }
-        }
-      }
     }
 
     return NextResponse.json({ completed: completedCount })
