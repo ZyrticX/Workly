@@ -69,11 +69,21 @@ export function processState(
       }
     }
 
-    // Auto-select service if only 1 exists (no need to ask)
-    if (!state.service && services.length === 1) {
-      state.service = services[0].name
-      state.serviceDuration = services[0].duration
-      state.servicePrice = services[0].price
+    // Auto-select service:
+    // 1. Only 1 service → use it
+    // 2. Returning customer → use most common service (first in list)
+    // 3. "כרגיל" / no service specified for returning customer → use first
+    if (!state.service) {
+      if (services.length === 1) {
+        state.service = services[0].name
+        state.serviceDuration = services[0].duration
+        state.servicePrice = services[0].price
+      } else if (services.length > 1 && contactName && !/^\d|^לקוח/.test(contactName)) {
+        // Known returning customer without specifying service → use first (most popular)
+        state.service = services[0].name
+        state.serviceDuration = services[0].duration
+        state.servicePrice = services[0].price
+      }
     }
 
     // Use known name from DB — but only if it's a real name, not a placeholder

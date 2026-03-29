@@ -206,12 +206,21 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
         extracted.time = undefined as unknown as string
       }
     }
-    // Validate time range (00:00-23:59)
+    // Validate time range (00:00-23:59) + round to nearest slot
     if (extracted.time) {
       const [h, m] = extracted.time.split(':').map(Number)
       if (h < 0 || h > 23 || m < 0 || m > 59) {
         console.warn(`[agent] Invalid time range from AI: "${extracted.time}" — clearing`)
         extracted.time = undefined as unknown as string
+      } else {
+        // Round to nearest 30-minute slot (avoid 16:09, 10:15, etc.)
+        const roundedM = m < 15 ? 0 : m < 45 ? 30 : 0
+        const roundedH = m >= 45 ? h + 1 : h
+        const roundedTime = `${String(roundedH).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`
+        if (extracted.time !== roundedTime) {
+          console.log(`[agent] Rounded time: ${extracted.time} → ${roundedTime}`)
+          extracted.time = roundedTime
+        }
       }
     }
   }
