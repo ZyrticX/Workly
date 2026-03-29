@@ -16,7 +16,7 @@ interface Session {
 interface Alert {
   id: string
   event_type: string
-  payload: any
+  payload: Record<string, unknown> | string
   created_at: string
 }
 

@@ -1,6 +1,30 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { BusinessesClient } from './businesses-client'
 
+interface BusinessUser {
+  user_id: string
+  role: string
+}
+
+interface PhoneNumberRow {
+  id: string
+  phone_number: string
+  status: string
+  session_id: string | null
+}
+
+interface BillingAccountRow {
+  plan: string
+  monthly_price: number
+  status: string
+  next_billing_date: string | null
+}
+
+interface AuthUser {
+  id: string
+  email: string
+}
+
 async function getBusinesses() {
   const supabase = createServiceClient()
 
@@ -39,26 +63,26 @@ async function getBusinesses() {
   const ownerEmails: Record<string, string> = {}
   if (businesses) {
     const ownerUserIds = businesses
-      .flatMap((b: any) => (b.business_users as any[] || []))
-      .filter((bu: any) => bu.role === 'owner')
-      .map((bu: any) => bu.user_id)
+      .flatMap((b) => (b.business_users as BusinessUser[] || []))
+      .filter((bu: BusinessUser) => bu.role === 'owner')
+      .map((bu: BusinessUser) => bu.user_id)
 
     if (ownerUserIds.length > 0) {
       const { data: users } = await supabase
-        .from('auth.users' as any)
+        .from('auth.users' as 'businesses')
         .select('id, email')
         .in('id', ownerUserIds)
 
       // Fallback: query business_users with owner_user_id from businesses table
       if (!users) {
         for (const biz of businesses) {
-          const ownerId = (biz as any).owner_user_id
+          const ownerId = (biz as Record<string, unknown>).owner_user_id as string | undefined
           if (ownerId) {
             ownerEmails[biz.id] = ownerId
           }
         }
       } else {
-        for (const u of users as any[]) {
+        for (const u of users as AuthUser[]) {
           ownerEmails[u.id] = u.email
         }
       }
@@ -72,13 +96,13 @@ async function getBusinesses() {
 
   return (businesses ?? []).map((biz) => {
     // Extract owner email from business_users join
-    const ownerUser = (biz.business_users as any[])?.find(
-      (bu: any) => bu.role === 'owner'
+    const ownerUser = (biz.business_users as BusinessUser[])?.find(
+      (bu: BusinessUser) => bu.role === 'owner'
     )
     const ownerEmail = ownerUser ? ownerEmails[ownerUser.user_id] ?? null : null
 
     // Extract primary phone
-    const primaryPhone = (biz.phone_numbers as any[])?.[0] ?? null
+    const primaryPhone = (biz.phone_numbers as PhoneNumberRow[])?.[0] ?? null
 
     // Extract billing
     const billing = Array.isArray(biz.billing_accounts)
@@ -95,10 +119,10 @@ async function getBusinesses() {
       owner_email: ownerEmail,
       phone_number: primaryPhone?.phone_number ?? null,
       phone_status: primaryPhone?.status ?? null,
-      phones: (biz.phone_numbers as any[]) ?? [],
+      phones: (biz.phone_numbers as PhoneNumberRow[]) ?? [],
       billing: billing,
-      is_draft: (biz as any).is_draft ?? false,
-      ai_setup_summary: (biz as any).ai_setup_summary ?? null,
+      is_draft: ((biz as Record<string, unknown>).is_draft as boolean) ?? false,
+      ai_setup_summary: ((biz as Record<string, unknown>).ai_setup_summary as string | null) ?? null,
     }
   })
 }

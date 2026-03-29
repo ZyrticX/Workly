@@ -105,7 +105,7 @@ export async function getConversations(
   }
 
   // Transform: extract only the last message per conversation
-  const conversations = (data ?? []).map((conv: any) => {
+  const conversations = (data ?? []).map((conv) => {
     // Messages come from the join; pick the most recent one
     const messages = conv.messages as LastMessage[] | null
     const lastMessage =

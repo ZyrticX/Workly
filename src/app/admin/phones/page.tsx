@@ -40,7 +40,7 @@ async function getPhones() {
     last_health_check: p.last_health_check,
     business_id: p.business_id,
     created_at: p.created_at,
-    business_name: (p.businesses as any)?.name ?? null,
+    business_name: (p.businesses as unknown as { id: string; name: string } | null)?.name ?? null,
   }))
 
   const counts = {

@@ -53,7 +53,7 @@ async function getSimData() {
       status: s.status,
       sim_status: simStatus,
       business_id: s.business_id,
-      business_name: (s.businesses as any)?.name ?? null,
+      business_name: (s.businesses as unknown as { id: string; name: string } | null)?.name ?? null,
       last_health_check: s.last_health_check,
       created_at: s.created_at,
     }

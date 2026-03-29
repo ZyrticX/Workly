@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
-type PostgresChange<T extends { [key: string]: any }> = RealtimePostgresChangesPayload<T>
+type PostgresChange<T extends { [key: string]: unknown }> = RealtimePostgresChangesPayload<T>
 
 // Module-level singleton — avoids creating a new client on every render
 const supabase = createClient()
@@ -13,8 +13,45 @@ const supabase = createClient()
  * Subscribe to realtime messages for a specific conversation.
  * Returns messages array that updates in real-time.
  */
+interface RealtimeMessage {
+  id: string
+  conversation_id: string
+  direction: 'inbound' | 'outbound'
+  sender_type: 'ai' | 'customer' | 'agent'
+  type: string
+  content: string | null
+  status: string
+  provider_message_id: string | null
+  created_at: string
+  [key: string]: unknown
+}
+
+interface RealtimeAppointment {
+  id: string
+  business_id: string
+  contact_id: string
+  start_time: string
+  service_type: string | null
+  status: string
+  contacts?: { name: string | null; phone: string | null } | null
+  [key: string]: unknown
+}
+
+interface RealtimeConversation {
+  id: string
+  business_id: string
+  contact_id: string
+  status: string
+  assigned_to: string | null
+  is_bot_active: boolean
+  last_message_at: string
+  created_at: string
+  contacts: { name: string | null; phone: string | null; status: string } | null
+  lastMessage: { content: string | null; created_at: string; direction: string; sender_type: string } | null
+}
+
 export function useRealtimeMessages(conversationId: string | null) {
-  const [messages, setMessages] = useState<any[]>([])
+  const [messages, setMessages] = useState<RealtimeMessage[]>([])
   const [loading, setLoading] = useState(true)
 
   // Fetch initial messages
@@ -57,8 +94,8 @@ export function useRealtimeMessages(conversationId: string | null) {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: PostgresChange<any>) => {
-          setMessages((prev) => [...prev, payload.new as any])
+        (payload: PostgresChange<RealtimeMessage>) => {
+          setMessages((prev) => [...prev, payload.new as RealtimeMessage])
         }
       )
       .on(
@@ -69,10 +106,10 @@ export function useRealtimeMessages(conversationId: string | null) {
           table: 'messages',
           filter: `conversation_id=eq.${conversationId}`,
         },
-        (payload: PostgresChange<any>) => {
+        (payload: PostgresChange<RealtimeMessage>) => {
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === (payload.new as any).id ? (payload.new as any) : msg
+              msg.id === (payload.new as RealtimeMessage).id ? (payload.new as RealtimeMessage) : msg
             )
           )
         }
@@ -92,7 +129,7 @@ export function useRealtimeMessages(conversationId: string | null) {
  * Returns appointments array that updates in real-time.
  */
 export function useRealtimeAppointments(businessId: string | null) {
-  const [appointments, setAppointments] = useState<any[]>([])
+  const [appointments, setAppointments] = useState<RealtimeAppointment[]>([])
   const [loading, setLoading] = useState(true)
 
   // Fetch initial appointments
@@ -135,9 +172,9 @@ export function useRealtimeAppointments(businessId: string | null) {
           table: 'appointments',
           filter: `business_id=eq.${businessId}`,
         },
-        (payload: PostgresChange<any>) => {
+        (payload: PostgresChange<RealtimeAppointment>) => {
           setAppointments((prev) =>
-            [...prev, payload.new as any].sort((a, b) =>
+            [...prev, payload.new as RealtimeAppointment].sort((a, b) =>
               (a.start_time || '').localeCompare(b.start_time || '')
             )
           )
@@ -151,10 +188,10 @@ export function useRealtimeAppointments(businessId: string | null) {
           table: 'appointments',
           filter: `business_id=eq.${businessId}`,
         },
-        (payload: PostgresChange<any>) => {
+        (payload: PostgresChange<RealtimeAppointment>) => {
           setAppointments((prev) =>
             prev.map((apt) =>
-              apt.id === (payload.new as any).id ? (payload.new as any) : apt
+              apt.id === (payload.new as RealtimeAppointment).id ? (payload.new as RealtimeAppointment) : apt
             )
           )
         }
@@ -167,9 +204,9 @@ export function useRealtimeAppointments(businessId: string | null) {
           table: 'appointments',
           filter: `business_id=eq.${businessId}`,
         },
-        (payload: PostgresChange<any>) => {
+        (payload: PostgresChange<RealtimeAppointment>) => {
           setAppointments((prev) =>
-            prev.filter((apt) => apt.id !== (payload.old as any).id)
+            prev.filter((apt) => apt.id !== (payload.old as RealtimeAppointment).id)
           )
         }
       )
@@ -192,9 +229,9 @@ export function useRealtimeAppointments(businessId: string | null) {
  */
 export function useRealtimeConversations(
   businessId: string | null,
-  initialData: any[] = []
+  initialData: RealtimeConversation[] = []
 ) {
-  const [conversations, setConversations] = useState<any[]>(initialData)
+  const [conversations, setConversations] = useState<RealtimeConversation[]>(initialData)
   const [loading, setLoading] = useState(false)
   const [hasFetched, setHasFetched] = useState(false)
 
@@ -215,12 +252,12 @@ export function useRealtimeConversations(
 
     if (!error && data) {
       // Map messages array to lastMessage (matches server-side getConversations shape)
-      const mapped = data.map((conv: any) => {
-        const msgs = conv.messages as any[] | null
+      const mapped: RealtimeConversation[] = data.map((conv) => {
+        const msgs = conv.messages as { content: string | null; created_at: string; direction: string; sender_type: string }[] | null
         const lastMessage = msgs && msgs.length > 0 ? msgs[0] : null
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { messages: _msgs, ...rest } = conv
-        return { ...rest, lastMessage }
+        return { ...rest, lastMessage } as RealtimeConversation
       })
       setConversations(mapped)
     }

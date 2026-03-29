@@ -45,12 +45,12 @@ async function getUsers(): Promise<UserRow[]> {
   const userBusinessMap: Record<string, { business_name: string; role: string; plan: string }> = {}
 
   if (businessUsers) {
-    for (const bu of businessUsers as any[]) {
+    for (const bu of businessUsers as unknown as { user_id: string; role: string; businesses: { name: string; plan: string } | null }[]) {
       const biz = bu.businesses
       userBusinessMap[bu.user_id] = {
-        business_name: biz?.name ?? null,
-        role: bu.role ?? null,
-        plan: biz?.plan ?? null,
+        business_name: biz?.name ?? null!,
+        role: bu.role ?? null!,
+        plan: biz?.plan ?? null!,
       }
     }
   }

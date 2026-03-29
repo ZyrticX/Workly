@@ -1,4 +1,4 @@
-import { getConversations } from '@/lib/data/messages'
+import { getConversations, type ConversationWithContact } from '@/lib/data/messages'
 import { InboxShell } from '@/components/inbox/inbox-shell'
 
 export const metadata = {
@@ -15,7 +15,7 @@ export const metadata = {
  * Desktop (md+): side-by-side split view.
  */
 export default async function InboxPage() {
-  let conversations: any[] = []
+  let conversations: ConversationWithContact[] = []
   let loadError: string | null = null
   try {
     conversations = await getConversations() || []

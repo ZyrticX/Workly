@@ -91,7 +91,7 @@ export async function POST() {
   }
 }
 
-async function ensureRelatedRecords(admin: any, businessId: string) {
+async function ensureRelatedRecords(admin: ReturnType<typeof createServiceClient>, businessId: string) {
   // Ensure business_settings exists
   const { data: settings } = await admin
     .from('business_settings')

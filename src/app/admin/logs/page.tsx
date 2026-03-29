@@ -52,7 +52,7 @@ async function getLogsData() {
 
     if (profiles) {
       userEmailMap = Object.fromEntries(
-        profiles.map((p: any) => [p.id, p.email])
+        profiles.map((p: { id: string; email: string }) => [p.id, p.email])
       )
     }
   }

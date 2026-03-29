@@ -48,7 +48,7 @@ async function getBillingData() {
   const accounts = (accountsRes.data ?? []).map((a) => ({
     id: a.id,
     business_id: a.business_id,
-    business_name: (a.businesses as any)?.name ?? 'לא ידוע',
+    business_name: (a.businesses as unknown as { name: string } | null)?.name ?? 'לא ידוע',
     plan: a.plan,
     monthly_price: Number(a.monthly_price) || 0,
     next_billing_date: a.next_billing_date,
@@ -63,7 +63,7 @@ async function getBillingData() {
     payment_method: p.payment_method,
     created_at: p.created_at,
     business_name:
-      (p.billing_accounts as any)?.businesses?.name ?? 'לא ידוע',
+      (p.billing_accounts as unknown as { businesses: { name: string } | null } | null)?.businesses?.name ?? 'לא ידוע',
   }))
 
   // Compute MRR

@@ -9,7 +9,7 @@ interface WebhookLog {
   id: string
   event_type: string
   business_id: string | null
-  payload: any
+  payload: Record<string, unknown>
   created_at: string
 }
 
@@ -18,7 +18,7 @@ interface AuditLog {
   user_id: string | null
   user_email: string | null
   action: string
-  details: any
+  details: Record<string, unknown>
   created_at: string
 }
 
@@ -75,7 +75,7 @@ const auditActionColors: Record<string, string> = {
 
 // ── Helpers ────────────────────────────────────────────────
 
-function truncateJson(value: any, maxLen = 80): string {
+function truncateJson(value: unknown, maxLen = 80): string {
   if (value == null) return '-'
   const str = typeof value === 'string' ? value : JSON.stringify(value)
   return str.length > maxLen ? str.slice(0, maxLen) + '...' : str
@@ -92,7 +92,7 @@ function formatTime(iso: string): string {
   })
 }
 
-function prettyJson(value: any): string {
+function prettyJson(value: unknown): string {
   if (value == null) return '-'
   try {
     const obj = typeof value === 'string' ? JSON.parse(value) : value

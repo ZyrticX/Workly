@@ -216,18 +216,18 @@ async function getDashboardData() {
   const whatsappConnected = waSessionRes.data?.status === 'connected'
 
   // Week appointments
-  const weekAppointments = (weekAptsRes.data || []).map((apt: any) => ({
+  const weekAppointments = (weekAptsRes.data || []).map((apt) => ({
     id: apt.id,
     startTime: apt.start_time as string,
     time: (apt.start_time as string).substring(11, 16),
-    contactName: displayContactName(apt.contacts?.name || ''),
+    contactName: displayContactName((apt.contacts as unknown as { name: string } | null)?.name || ''),
     service: apt.service_type || '',
     status: apt.status as 'confirmed' | 'pending',
   }))
   const weekAptsTotal = weekAptsRes.count || 0
 
   // Notifications
-  const recentNotifications = (notificationsRes.data || []).map((n: any) => ({
+  const recentNotifications = (notificationsRes.data || []).map((n) => ({
     id: n.id as string,
     type: n.type as string,
     title: n.title as string,
@@ -236,9 +236,9 @@ async function getDashboardData() {
   }))
 
   // Today's cancellations
-  const todayCancellations = (todayCancelledRes.data || []).map((apt: any) => ({
+  const todayCancellations = (todayCancelledRes.data || []).map((apt) => ({
     id: apt.id as string,
-    contactName: displayContactName(apt.contacts?.name || ''),
+    contactName: displayContactName((apt.contacts as unknown as { name: string } | null)?.name || ''),
   }))
 
   return {
@@ -250,10 +250,10 @@ async function getDashboardData() {
       newContacts: newContactsCount,
       cancellationRate: Math.round(cancellationRate * 10) / 10,
     },
-    upcomingAppointments: todayAppointments.map((apt: any) => ({
+    upcomingAppointments: todayAppointments.map((apt) => ({
       id: apt.id,
       time: (apt.start_time as string).substring(11, 16),
-      contactName: displayContactName(apt.contacts?.name || ''),
+      contactName: displayContactName((apt.contacts as unknown as { name: string } | null)?.name || ''),
       service: apt.service_type || '',
       status: apt.status as 'confirmed' | 'pending' | 'cancelled',
     })),
