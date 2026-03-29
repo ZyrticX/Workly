@@ -206,7 +206,6 @@ export async function executeAction(
 
           // If booking for someone else, create a linked contact
           let bookingContactId = input.contactId
-          const isForOther = params.for_other as boolean
           if (isForOther && params.contact_name) {
             const otherName = params.contact_name as string
             const relationship = (params.other_relationship as string) || 'other'
