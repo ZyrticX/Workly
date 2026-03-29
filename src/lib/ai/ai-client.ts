@@ -5,7 +5,7 @@
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
-const AI_MODEL = process.env.AI_MODEL || 'google/gemini-2.5-flash-preview'
+const AI_MODEL = process.env.AI_MODEL || 'openai/gpt-4.1-mini'
 
 export interface ConversationEntry {
   role: 'user' | 'model' | 'assistant'
