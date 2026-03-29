@@ -80,6 +80,54 @@ export async function processAIAgent(
     gender: null as string | null,
   }
 
+  // Load upcoming appointments for this contact + linked contacts (booked by this contact)
+  const israelNowForApts = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+  const todayForApts = `${israelNowForApts.getFullYear()}-${String(israelNowForApts.getMonth() + 1).padStart(2, '0')}-${String(israelNowForApts.getDate()).padStart(2, '0')}T00:00:00`
+
+  // Get own appointments
+  const { data: ownApts } = await supabase
+    .from('appointments')
+    .select('id, contact_name, service_type, start_time, status')
+    .eq('business_id', input.businessId)
+    .eq('contact_id', input.contactId)
+    .in('status', ['confirmed', 'pending'])
+    .gte('start_time', todayForApts)
+    .order('start_time')
+    .limit(5)
+
+  // Get appointments booked for linked contacts (friends/family)
+  const { data: linkedContacts } = await supabase
+    .from('contacts')
+    .select('id, name')
+    .eq('business_id', input.businessId)
+    .eq('linked_to', input.contactId)
+
+  let linkedApts: typeof ownApts = []
+  if (linkedContacts && linkedContacts.length > 0) {
+    const linkedIds = linkedContacts.map(c => c.id)
+    const { data } = await supabase
+      .from('appointments')
+      .select('id, contact_name, service_type, start_time, status')
+      .eq('business_id', input.businessId)
+      .in('contact_id', linkedIds)
+      .in('status', ['confirmed', 'pending'])
+      .gte('start_time', todayForApts)
+      .order('start_time')
+      .limit(5)
+    linkedApts = data || []
+  }
+
+  // Build appointment context string for AI
+  const allApts = [...(ownApts || []), ...(linkedApts || [])]
+  const appointmentContext = allApts.length > 0
+    ? allApts.map(a => {
+        const time = (a.start_time as string).substring(11, 16)
+        const date = (a.start_time as string).substring(0, 10)
+        const isLinked = linkedApts?.some(la => la.id === a.id)
+        return `${date} ${time} - ${a.service_type} - ${a.contact_name}${isLinked ? ' (קבעת עבורו/ה)' : ''}`
+      }).join('\n')
+    : 'אין תורים קרובים'
+
   // 2. Load booking state
   const { loadBookingState, saveBookingState, processState } = await import('@/lib/ai/booking-state')
   const bookingState = await loadBookingState(input.conversationId)
@@ -403,7 +451,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
     personaResult.data,
     contactCtx,
     aiAdvanced
-  )
+  ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" — הצג את כל התורים מהרשימה למעלה. אם יש תורים שקבע לאחרים, אמור "וגם קבעת תור ל[שם] ב-[שעה]".`
 
   let parsed: ParsedAIResponse
 
