@@ -118,6 +118,29 @@ export async function executeAction(
             timeStr = `${String(rH).padStart(2, '0')}:${String(rM).padStart(2, '0')}`
           }
 
+          // VALIDATE: Check working hours — reject bookings outside business hours
+          const workingHours = settings?.working_hours as Record<string, { active?: boolean; start?: string; end?: string }> | null
+          if (workingHours && params.date) {
+            const dayOfWeek = new Date(params.date + 'T12:00:00').getDay()
+            const dayConfig = workingHours[String(dayOfWeek)]
+            if (dayConfig) {
+              if (!dayConfig.active) {
+                throw new ActionError('CLOSED_DAY', 'העסק סגור ביום הזה. רוצה לנסות יום אחר?')
+              }
+              const [startH, startM] = (dayConfig.start || '09:00').split(':').map(Number)
+              const [endH, endM] = (dayConfig.end || '18:00').split(':').map(Number)
+              const startMin = startH * 60 + (startM || 0)
+              const endMin = endH * 60 + (endM || 0)
+              const bookMin = parseInt(timeStr.split(':')[0]) * 60 + parseInt(timeStr.split(':')[1])
+              if (bookMin < startMin || bookMin >= endMin) {
+                throw new ActionError(
+                  'OUTSIDE_HOURS',
+                  `השעה ${timeStr} מחוץ לשעות העבודה (${dayConfig.start}-${dayConfig.end}). רוצה שעה אחרת?`
+                )
+              }
+            }
+          }
+
           // Save Israel time directly (no timezone offset)
           // Column is now timestamp WITHOUT timezone
           // 12:00 Israel = stored as 12:00 = displayed as 12:00
