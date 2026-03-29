@@ -86,6 +86,7 @@ async function incrementErrorCounter(
       .from('conversations')
       .select('id, error_count, is_bot_active')
       .eq('id', conversationId)
+      .eq('business_id', businessId)
       .single()
 
     const newCount = (conv?.error_count ?? 0) + 1
@@ -274,7 +275,11 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        contact = newContact!
+        if (!newContact) {
+          console.error('[webhook] Contact insert returned null')
+          return NextResponse.json({ error: 'contact creation failed' }, { status: 500 })
+        }
+        contact = newContact
 
         // Notify business owner about new contact
         await supabase.from('notifications').insert({
@@ -350,7 +355,20 @@ export async function POST(req: NextRequest) {
       })
 
       if (msgError) {
+        // If it's a duplicate (unique constraint), skip silently — WAHA sent twice
+        if (msgError.code === '23505' || msgError.message?.includes('duplicate')) {
+          console.log(`[webhook] Duplicate message skipped: ${payload.id}`)
+          return NextResponse.json({ ok: true, skipped: 'duplicate' })
+        }
         console.error('[webhook] Failed to save message:', msgError)
+        await logError({
+          businessId: phone.business_id,
+          source: 'webhook',
+          severity: 'critical',
+          message: `Message save failed: ${msgError.message}`,
+          contactName: contact?.name || from,
+        })
+        return NextResponse.json({ error: 'message save failed' }, { status: 500 })
       }
 
       // 5. Update conversation timestamp

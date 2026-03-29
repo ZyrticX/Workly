@@ -18,14 +18,19 @@ export class WahaClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${path}`
 
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
     const res = await fetch(url, {
       ...options,
+      signal: controller.signal,
       headers: {
         'Content-Type': 'application/json',
         'X-Api-Key': this.apiKey,
         ...options.headers,
       },
     })
+    clearTimeout(timeout)
 
     if (!res.ok) {
       const errorBody = await res.text().catch(() => 'Unknown error')

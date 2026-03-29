@@ -20,6 +20,7 @@ export async function GET() {
       .select('id, business_id, contact_id, price, status')
       .in('status', ['confirmed', 'pending'])
       .lt('end_time', nowStr)
+      .limit(500)
 
     if (error) {
       console.error('[auto-complete] Query error:', error)
