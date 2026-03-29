@@ -176,8 +176,10 @@ export async function executeAction(
           }
 
           // Update contact name if we learned it during conversation
-          const learnedName = params.contact_name as string | undefined
-          if (learnedName && learnedName.length > 1) {
+          // BUT NOT if this booking is for someone else (linked contact)
+          const isForOther = params.for_other as boolean
+          const learnedName = isForOther ? (params.booked_by_contact_name as string) : (params.contact_name as string | undefined)
+          if (learnedName && learnedName.length > 1 && !isForOther) {
             // Check if the learned name is a real name (not a placeholder/phone number)
             const isPlaceholder = /^\d+$/.test(learnedName)
               || /^[\d\s]+$/.test(learnedName)
@@ -327,7 +329,26 @@ export async function executeAction(
         notes?: string
       }
       const updates: Record<string, unknown> = {}
-      if (contactParams.name) updates.name = contactParams.name
+      if (contactParams.name) {
+        // Only update name if current name is a placeholder (phone number, "לקוח XXXX")
+        // NEVER overwrite a real name with a linked contact's name
+        const { data: currentContact } = await supabase
+          .from('contacts')
+          .select('name')
+          .eq('id', input.contactId)
+          .single()
+        const currentName = currentContact?.name || ''
+        const isCurrentPlaceholder = !currentName
+          || /^\d+$/.test(currentName)
+          || /^[\d\s]+$/.test(currentName)
+          || currentName.startsWith('לקוח')
+          || currentName.startsWith('972')
+          || currentName.startsWith('05')
+          || /^\+?\d{7,}/.test(currentName)
+        if (isCurrentPlaceholder) {
+          updates.name = contactParams.name
+        }
+      }
       if (contactParams.phone) {
         let phone = contactParams.phone.replace(/[^0-9]/g, '')
         if (phone.startsWith('05') && phone.length === 10) {
