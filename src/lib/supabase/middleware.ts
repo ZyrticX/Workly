@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 const PUBLIC_PATHS = ['/login', '/register', '/api/webhooks', '/api/cron', '/admin-login']
 
 // Paths that skip onboarding check
-const SKIP_ONBOARDING_CHECK = ['/onboarding', '/api/', '/login', '/register', '/admin']
+const SKIP_ONBOARDING_CHECK = ['/onboarding', '/api/', '/login', '/register', '/admin', '/terms']
 
 // Admin-only emails (pure admin users without a business)
 const ADMIN_ONLY_EMAILS = ['workly@admin.com', 'test@admin.com']
@@ -83,6 +83,23 @@ export async function updateSession(request: NextRequest) {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)
+      }
+
+      // 4. Check TOS acceptance (only for non-terms pages)
+      if (!pathname.startsWith('/terms')) {
+        const { data: tos } = await supabase
+          .from('tos_acceptances')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('tos_version', '1.0')
+          .limit(1)
+          .single()
+
+        if (!tos) {
+          const url = request.nextUrl.clone()
+          url.pathname = '/terms'
+          return NextResponse.redirect(url)
+        }
       }
     } catch {
       // If query fails, let user through (don't block on errors)
