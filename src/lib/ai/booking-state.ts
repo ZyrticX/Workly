@@ -270,9 +270,34 @@ export function processState(
 
   // ── Collecting notes ──
   if (state.step === 'collecting_notes') {
-    if (extracted.notes && !['אין', 'לא', 'אין הערות', 'לא צריך', 'הכל טוב', 'בסדר'].includes(extracted.notes.trim())) {
+    const noNotes = ['אין', 'לא', 'אין הערות', 'לא צריך', 'הכל טוב', 'בסדר']
+    if (extracted.notes && !noNotes.includes(extracted.notes.trim())) {
       state.notes = extracted.notes
     }
+
+    // If customer already confirmed in their response (e.g. "סגור", "כן תודה", "אפשר")
+    // → skip confirmation step, book directly
+    if (extracted.confirmation === true || extracted.intent === 'confirm'
+        || /סגור|אפשר|תודה|יאללה|בטח|כן/.test(extracted.notes || '')) {
+      const bookingName = state.forOther ? state.otherName : state.name
+      action = {
+        type: 'book_appointment',
+        params: {
+          service: state.service,
+          date: state.date,
+          time: state.time,
+          contact_name: bookingName,
+          notes: state.notes || '',
+          for_other: state.forOther || false,
+          other_relationship: state.otherRelationship || null,
+          booked_by_contact_name: state.forOther ? state.name : null,
+        }
+      }
+      skipAI = true
+      aiInstruction = '__BOOKING_PENDING__'
+      return { newState: { step: 'idle' }, aiInstruction, action, skipAI }
+    }
+
     state.step = 'confirming'
     aiInstruction = buildConfirmationInstruction(state)
     return { newState: state, aiInstruction, action }
