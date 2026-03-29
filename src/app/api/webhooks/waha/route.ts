@@ -4,6 +4,52 @@ import { processAIAgent, ERROR_MESSAGES } from '@/lib/ai/agent-prompt'
 import { whatsapp } from '@/lib/waha/provider'
 import { logError } from '@/lib/utils/error-logger'
 
+// ── Common English→Hebrew name transliteration ─────────
+
+const NAME_MAP: Record<string, string> = {
+  // Male names
+  'david': 'דוד', 'daniel': 'דניאל', 'michael': 'מיכאל', 'moshe': 'משה', 'moses': 'משה',
+  'yosef': 'יוסף', 'joseph': 'יוסף', 'avraham': 'אברהם', 'abraham': 'אברהם',
+  'yakov': 'יעקב', 'jacob': 'יעקב', 'avi': 'אבי', 'eli': 'אלי', 'alon': 'אלון',
+  'omer': 'עומר', 'omar': 'עומר', 'noam': 'נועם', 'adam': 'אדם', 'ben': 'בן',
+  'tom': 'תום', 'guy': 'גיא', 'roi': 'רועי', 'roee': 'רועי', 'idan': 'עידן',
+  'itay': 'איתי', 'itai': 'איתי', 'yonatan': 'יונתן', 'jonathan': 'יונתן',
+  'ori': 'אורי', 'eyal': 'אייל', 'oren': 'אורן', 'yuval': 'יובל',
+  'tomer': 'תומר', 'shahar': 'שחר', 'dor': 'דור', 'lior': 'ליאור',
+  'matan': 'מתן', 'nir': 'ניר', 'gal': 'גל', 'amir': 'אמיר',
+  'elad': 'אלעד', 'gilad': 'גלעד', 'ido': 'עידו', 'amit': 'עמית',
+  'ofir': 'אופיר', 'ariel': 'אריאל', 'ron': 'רון', 'yaron': 'ירון',
+  'ilan': 'אילן', 'boaz': 'בועז', 'nadav': 'נדב', 'assaf': 'אסף',
+  'eran': 'ערן', 'tal': 'טל', 'shai': 'שי', 'shay': 'שי',
+  'evgeny': 'יבגני', 'evgeniy': 'יבגני', 'ivgi': 'יבגני',
+  'alex': 'אלכס', 'max': 'מקס', 'mark': 'מרק', 'vlad': 'ולד',
+  // Female names
+  'sarah': 'שרה', 'sara': 'שרה', 'michal': 'מיכל', 'rachel': 'רחל',
+  'noa': 'נועה', 'maya': 'מאיה', 'shira': 'שירה', 'dana': 'דנה',
+  'yael': 'יעל', 'tamar': 'תמר', 'mor': 'מור', 'hadar': 'הדר',
+  'noy': 'נוי', 'lee': 'לי', 'chen': 'חן', 'shani': 'שני',
+  'inbar': 'ענבר', 'orit': 'אורית', 'osnat': 'אסנת', 'keren': 'קרן',
+  'efrat': 'אפרת', 'sigal': 'סיגל', 'orly': 'אורלי', 'merav': 'מירב',
+  'anna': 'אנה', 'maria': 'מריה', 'lena': 'לנה', 'natasha': 'נטשה',
+  'olga': 'אולגה', 'svetlana': 'סבטלנה', 'irina': 'אירינה',
+}
+
+function transliterateToHebrew(name: string): string {
+  // Already Hebrew? Return as-is
+  if (/[\u0590-\u05FF]/.test(name)) return name
+
+  // Try exact match (case-insensitive)
+  const parts = name.trim().split(/\s+/)
+  const transliterated = parts.map(part => {
+    const lower = part.toLowerCase().replace(/[^a-z]/g, '')
+    return NAME_MAP[lower] || part // Keep original if no match
+  })
+
+  const result = transliterated.join(' ')
+  // If at least one part was transliterated, return Hebrew version
+  return result !== name ? result : name
+}
+
 // ── Webhook Handler for WAHA ────────────────────────────
 // Uses service client — webhooks have no auth context.
 
@@ -204,8 +250,9 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Use WhatsApp display name (notifyName), not phone number
-        const displayName = whatsappName || (isLid ? `לקוח ${from.slice(-4)}` : contactPhone)
+        // Use WhatsApp display name, transliterated to Hebrew
+        const rawName = whatsappName || (isLid ? `לקוח ${from.slice(-4)}` : contactPhone)
+        const displayName = transliterateToHebrew(rawName)
 
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
@@ -250,9 +297,11 @@ export async function POST(req: NextRequest) {
           || currentName.startsWith('05')
           || /^\+?\d{7,}/.test(currentName)
         if (isPlaceholder && whatsappName !== currentName) {
-          await supabase.from('contacts').update({ name: whatsappName }).eq('id', contact.id)
-          contact.name = whatsappName
-          console.log(`[webhook] Updated contact name from WhatsApp: "${currentName}" → "${whatsappName}"`)
+          // Transliterate English name to Hebrew if needed
+          const finalName = transliterateToHebrew(whatsappName)
+          await supabase.from('contacts').update({ name: finalName }).eq('id', contact.id)
+          contact.name = finalName
+          console.log(`[webhook] Updated contact name: "${currentName}" → "${finalName}"${finalName !== whatsappName ? ` (from "${whatsappName}")` : ''}`)
         }
       }
 
