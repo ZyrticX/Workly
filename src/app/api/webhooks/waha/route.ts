@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { processAIAgent, ERROR_MESSAGES } from '@/lib/ai/agent-prompt'
 import { whatsapp } from '@/lib/waha/provider'
+import { logError } from '@/lib/utils/error-logger'
 
 // ── Webhook Handler for WAHA ────────────────────────────
 // Uses service client — webhooks have no auth context.
@@ -302,6 +303,13 @@ export async function POST(req: NextRequest) {
             } catch (sendError) {
               // WAHA sendMessage failed — save message as 'failed', notify owner
               console.error('[webhook] WAHA sendMessage failed:', sendError)
+              await logError({
+                businessId: phone.business_id,
+                source: 'webhook',
+                severity: 'error',
+                message: `WAHA send failed: ${sendError instanceof Error ? sendError.message : 'unknown'}`,
+                contactName: contact?.name || from,
+              })
 
               await supabase.from('messages').insert({
                 business_id: phone.business_id,
@@ -355,6 +363,16 @@ export async function POST(req: NextRequest) {
           }
         } catch (aiError) {
           console.error('[webhook] AI agent error:', aiError)
+
+          // Log to error_logs + send WhatsApp alert for critical errors
+          await logError({
+            businessId: phone.business_id,
+            source: 'webhook',
+            severity: 'critical',
+            message: aiError instanceof Error ? aiError.message : 'AI agent crash',
+            contactName: displayName || from,
+            details: { conversationId: convId, message: messageContent?.slice(0, 100) },
+          })
 
           // Send a fallback message to the customer so they aren't left hanging
           try {

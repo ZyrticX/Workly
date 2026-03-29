@@ -4,6 +4,7 @@ import type { AgentInput, AgentResponse, ParsedAIResponse, AdvancedAIConfig } fr
 import { buildSystemPrompt } from './prompt-builder'
 import { ERROR_MESSAGES, ActionError } from './error-messages'
 import { executeAction, formatDateHebrew } from './action-executor'
+import { logError } from '@/lib/utils/error-logger'
 
 // ── Main Agent Processor ────────────────────────────────
 
@@ -672,6 +673,16 @@ ${stateResult.aiInstruction}
       conversationId: input.conversationId,
       contactId: input.contactId,
       message: input.message.slice(0, 100),
+    })
+
+    // Log to error_logs + send WhatsApp alert
+    await logError({
+      businessId: input.businessId,
+      source: 'ai_agent',
+      severity: 'critical',
+      message: errMsg,
+      contactName: input.contactName,
+      details: { conversationId: input.conversationId, status: errStatus },
     })
 
     // Choose a friendly Hebrew message based on error type

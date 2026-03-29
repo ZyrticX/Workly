@@ -4,7 +4,7 @@ import { LogsClient } from './logs-client'
 async function getLogsData() {
   const supabase = createServiceClient()
 
-  const [webhookRes, auditRes, aiRes] = await Promise.all([
+  const [webhookRes, auditRes, aiRes, errorRes] = await Promise.all([
     // Webhook logs
     supabase
       .from('webhook_logs')
@@ -23,6 +23,13 @@ async function getLogsData() {
     supabase
       .from('ai_conversation_logs')
       .select('id, business_id, intent, confidence, escalated, response, user_message, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+
+    // Error logs
+    supabase
+      .from('error_logs')
+      .select('id, business_id, source, severity, message, details, contact_name, resolved, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
   ])
@@ -76,11 +83,22 @@ async function getLogsData() {
       user_message: ai.user_message,
       created_at: ai.created_at,
     })),
+    errorLogs: (errorRes.data ?? []).map((e) => ({
+      id: e.id,
+      business_id: e.business_id,
+      source: e.source,
+      severity: e.severity,
+      message: e.message,
+      details: e.details,
+      contact_name: e.contact_name,
+      resolved: e.resolved,
+      created_at: e.created_at,
+    })),
   }
 }
 
 export default async function LogsPage() {
-  const { webhookLogs, auditLogs, aiLogs } = await getLogsData()
+  const { webhookLogs, auditLogs, aiLogs, errorLogs } = await getLogsData()
 
   return (
     <div className="space-y-6">
@@ -95,6 +113,7 @@ export default async function LogsPage() {
         webhookLogs={webhookLogs}
         auditLogs={auditLogs}
         aiLogs={aiLogs}
+        errorLogs={errorLogs}
       />
     </div>
   )

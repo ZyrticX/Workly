@@ -33,13 +33,26 @@ interface AiLog {
   created_at: string
 }
 
+interface ErrorLog {
+  id: string
+  business_id: string | null
+  source: string
+  severity: string
+  message: string
+  details: unknown
+  contact_name: string | null
+  resolved: boolean
+  created_at: string
+}
+
 interface LogsClientProps {
   webhookLogs: WebhookLog[]
   auditLogs: AuditLog[]
   aiLogs: AiLog[]
+  errorLogs?: ErrorLog[]
 }
 
-type TabKey = 'webhooks' | 'audit' | 'ai'
+type TabKey = 'webhooks' | 'audit' | 'ai' | 'errors'
 
 // ── Color maps ─────────────────────────────────────────────
 
@@ -120,6 +133,7 @@ function getConfidenceColor(confidence: number | null): string {
 // ── Tabs config ────────────────────────────────────────────
 
 const tabs: { key: TabKey; label: string }[] = [
+  { key: 'errors', label: '⚠️ שגיאות' },
   { key: 'webhooks', label: 'Webhooks' },
   { key: 'audit', label: 'פעולות' },
   { key: 'ai', label: 'AI שיחות' },
@@ -130,6 +144,7 @@ const tabs: { key: TabKey; label: string }[] = [
 export function LogsClient({
   webhookLogs: initialWebhookLogs,
   auditLogs: initialAuditLogs,
+  errorLogs: initialErrorLogs = [],
   aiLogs: initialAiLogs,
 }: LogsClientProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('webhooks')
@@ -440,6 +455,48 @@ export function LogsClient({
                 )}
               </tbody>
             </table></div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Error Logs Tab ────────────────────────── */}
+      {activeTab === 'errors' && (
+        <div className="bg-white rounded-2xl border border-border overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-border">
+                  <th className="text-start px-4 py-3 font-semibold text-text-muted">חומרה</th>
+                  <th className="text-start px-4 py-3 font-semibold text-text-muted">מקור</th>
+                  <th className="text-start px-4 py-3 font-semibold text-text-muted">שגיאה</th>
+                  <th className="text-start px-4 py-3 font-semibold text-text-muted">לקוח</th>
+                  <th className="text-start px-4 py-3 font-semibold text-text-muted">זמן</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {initialErrorLogs.length === 0 ? (
+                  <tr><td colSpan={5} className="text-center py-8 text-text-muted">אין שגיאות 🎉</td></tr>
+                ) : (
+                  initialErrorLogs.map((e) => (
+                    <tr key={e.id} className="hover:bg-gray-50">
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-lg text-xs font-medium ${
+                          e.severity === 'critical' ? 'bg-red-100 text-red-700' :
+                          e.severity === 'error' ? 'bg-orange-100 text-orange-700' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {e.severity === 'critical' ? '🔴 קריטי' : e.severity === 'error' ? '🟠 שגיאה' : '🟡 אזהרה'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-text-muted">{e.source}</td>
+                      <td className="px-4 py-3 text-xs max-w-[300px] truncate" title={e.message}>{e.message}</td>
+                      <td className="px-4 py-3 text-xs">{e.contact_name || '-'}</td>
+                      <td className="px-4 py-3 text-xs text-text-muted">{new Date(e.created_at).toLocaleString('he-IL')}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
