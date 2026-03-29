@@ -335,7 +335,28 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
     )
 
     if (!availability.available) {
-      // Slot is taken! Don't proceed to notes/confirming — go back to collecting_time
+      // Check if the conflict is the customer's OWN appointment
+      const { data: ownConflict } = await supabase
+        .from('appointments')
+        .select('id, service_type, start_time')
+        .eq('business_id', input.businessId)
+        .eq('contact_id', input.contactId)
+        .in('status', ['confirmed', 'pending'])
+        .gte('start_time', `${stateResult.newState.date}T${stateResult.newState.time}:00`)
+        .lte('start_time', `${stateResult.newState.date}T${stateResult.newState.time}:59`)
+        .limit(1)
+        .single()
+
+      if (ownConflict) {
+        // It's their OWN appointment — tell them!
+        const ownTime = (ownConflict.start_time as string).substring(11, 16)
+        stateResult.aiInstruction = `ללקוח כבר יש תור ב-${ownTime} ל${ownConflict.service_type}. אמור לו בחמימות שכבר קבוע לו, ושאל אם רוצה לשנות או להוסיף תור בשעה אחרת.`
+        stateResult.newState.step = 'idle'
+        stateResult.newState.time = undefined
+        stateResult.action = null
+        stateResult.skipAI = false
+      } else {
+      // Slot is taken by someone else — go back to collecting_time
       stateResult.newState.step = 'collecting_time'
       stateResult.newState.time = undefined
 
@@ -359,6 +380,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
       }
       stateResult.action = null
       stateResult.skipAI = false
+      } // end else (not own appointment)
     }
   }
 
@@ -563,11 +585,16 @@ ${stateResult.aiInstruction}
 
       // If booking was pending confirmation, NOW confirm to user
       if (parsed.text === '__BOOKING_PENDING__') {
-        const name = actionParams.contact_name || contactCtx.name || ''
+        const bookingName = actionParams.contact_name || contactCtx.name || ''
         const service = actionParams.service || ''
         const date = actionParams.date ? formatDateHebrew(actionParams.date as string) : ''
         const time = actionParams.time || ''
-        parsed.text = `מעולה ${name}! קבעתי לך ${service} ב${date} בשעה ${time}. נתראה! 🙏`
+        const isForOther = actionParams.for_other as boolean
+        if (isForOther) {
+          parsed.text = `מעולה! קבעתי ל${bookingName} ${service} ב${date} בשעה ${time}. נתראה! 🙏`
+        } else {
+          parsed.text = `מעולה ${bookingName}! קבעתי לך ${service} ב${date} בשעה ${time}. נתראה! 🙏`
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'שגיאה'
