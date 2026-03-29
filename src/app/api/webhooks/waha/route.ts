@@ -195,46 +195,23 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      // 2. Find or create contact
-      // Try chatId first (full format with @c.us/@lid), then stripped format for backwards compat
-      let { data: contact } = await supabase
+      // 2. Find or create contact — SINGLE query with OR for all possible matches
+      const phoneFormatted = !isLid && from.startsWith('972') ? '0' + from.slice(3) : ''
+      const searchConditions = [`wa_id.eq.${chatId}`, `wa_id.eq.${from}`]
+      if (phoneFormatted) searchConditions.push(`phone.eq.${phoneFormatted}`, `phone.eq.${from}`)
+
+      let { data: contactResults } = await supabase
         .from('contacts')
         .select('id, business_id, wa_id, phone, name, status')
         .eq('business_id', phone.business_id)
-        .eq('wa_id', chatId)
-        .single()
+        .or(searchConditions.join(','))
+        .limit(1)
 
-      // Fallback 1: old contacts stored wa_id without suffix
-      if (!contact) {
-        const { data: legacyContact } = await supabase
-          .from('contacts')
-          .select('id, business_id, wa_id, phone, name, status')
-          .eq('business_id', phone.business_id)
-          .eq('wa_id', from)
-          .single()
-        if (legacyContact) {
-          contact = legacyContact
-          await supabase.from('contacts').update({ wa_id: chatId }).eq('id', legacyContact.id)
-        }
-      }
+      let contact = contactResults?.[0] || null
 
-      // Fallback 2: search by phone number (prevents duplicates from LID/c.us)
-      if (!contact && !isLid && from.startsWith('972')) {
-        const phoneFormatted = '0' + from.slice(3)
-        const { data: phoneContact } = await supabase
-          .from('contacts')
-          .select('id, business_id, wa_id, phone, name, status')
-          .eq('business_id', phone.business_id)
-          .or(`phone.eq.${phoneFormatted},phone.eq.${from}`)
-          .limit(1)
-          .single()
-        if (phoneContact) {
-          contact = phoneContact
-          // Update wa_id to latest format
-          if (phoneContact.wa_id !== chatId) {
-            await supabase.from('contacts').update({ wa_id: chatId }).eq('id', phoneContact.id)
-          }
-        }
+      // Migrate wa_id if found by legacy format
+      if (contact && contact.wa_id !== chatId) {
+        await supabase.from('contacts').update({ wa_id: chatId }).eq('id', contact.id)
       }
 
       // Extract WhatsApp display name

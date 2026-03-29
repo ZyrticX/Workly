@@ -112,12 +112,11 @@ export class WahaClient {
   ): Promise<WahaSendResult> {
     const chatId = to.includes('@') ? to : `${to}@c.us`
 
-    // Show typing indicator before sending (natural delay)
-    await this.startTyping(session, to)
-    // Wait proportional to message length (min 1s, max 4s)
-    const typingDelay = Math.min(4000, Math.max(1000, text.length * 30))
+    // Show typing indicator (non-blocking — don't delay the send)
+    this.startTyping(session, to).catch(() => {})
+    // Short natural delay (0.5-1.5s max — just enough to feel human)
+    const typingDelay = Math.min(1500, Math.max(500, text.length * 10))
     await new Promise(resolve => setTimeout(resolve, typingDelay))
-    await this.stopTyping(session, to)
 
     return this.request<WahaSendResult>('/api/sendText', {
       method: 'POST',

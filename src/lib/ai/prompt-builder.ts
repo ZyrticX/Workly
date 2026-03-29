@@ -267,15 +267,22 @@ CRITICAL: כשהלקוח מאשר קביעת תור ויש לך את כל הפר
 - date בפורמט YYYY-MM-DD
 - time בפורמט HH:MM (24 שעות) — **בשעון ישראל (Asia/Jerusalem)**
 - service חייב להיות בדיוק כמו שמופיע ברשימת השירותים למעלה
-- תאריך היום: ${new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
-- השעה עכשיו בישראל: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit' })}
-- לוח שבועי:
-  * ראשון = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((0 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); })()}
-  * שני = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((1 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); })()}
-  * שלישי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((2 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); })()}
-  * רביעי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((3 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); })()}
-  * חמישי = ${(() => { const d = new Date(); d.setDate(d.getDate() + ((4 - d.getDay() + 7) % 7 || 7)); return d.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }); })()}
-- CRITICAL: השתמש/י בלוח למעלה כדי למצוא תאריך נכון. אל תנחש/י תאריכים!
+- תאריך היום: ${(() => { const n = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' })); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}-${String(n.getDate()).padStart(2,'0')}`; })()} (${new Date().toLocaleDateString('he-IL', { timeZone: 'Asia/Jerusalem', weekday: 'long' })})
+- השעה עכשיו: ${new Date().toLocaleTimeString('he-IL', { timeZone: 'Asia/Jerusalem', hour: '2-digit', minute: '2-digit', hour12: false })}
+- ימים קרובים:
+${(() => {
+  const n = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }));
+  const days = ['ראשון','שני','שלישי','רביעי','חמישי','שישי','שבת'];
+  const lines: string[] = [];
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(n); d.setDate(d.getDate() + i);
+    const ds = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    const label = i === 0 ? '*** היום' : i === 1 ? '*** מחר' : `  ${days[d.getDay()]}`;
+    lines.push(`  ${label} = ${ds}`);
+  }
+  return lines.join('\n');
+})()}
+- CRITICAL: אם לקוח אומר שם של יום שהוא היום — השתמש בתאריך של היום! לא שבוע הבא!
 - CRITICAL: ה-time ב-action חייב להיות בדיוק מה שהלקוח ביקש. אל תשנה/י את השעה!
 
 ### action: reschedule_appointment
