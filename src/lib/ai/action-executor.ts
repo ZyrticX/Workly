@@ -306,7 +306,10 @@ export async function executeAction(
     }
 
     case 'cancel_appointment': {
-      const params = action.params as { appointment_id?: string }
+      const params = action.params as { appointment_id?: string; cancel_all?: boolean }
+      const nowISR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+      const nowStr = `${nowISR.getFullYear()}-${String(nowISR.getMonth() + 1).padStart(2, '0')}-${String(nowISR.getDate()).padStart(2, '0')}T${String(nowISR.getHours()).padStart(2, '0')}:${String(nowISR.getMinutes()).padStart(2, '0')}:00`
+
       if (params.appointment_id) {
         await supabase
           .from('appointments')
@@ -314,29 +317,50 @@ export async function executeAction(
           .eq('id', params.appointment_id)
           .eq('business_id', input.businessId)
       } else {
+        // Get ALL contact IDs: this contact + linked contacts (friends/family booked by this person)
+        const contactIds = [input.contactId]
+        const { data: linkedContacts } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('business_id', input.businessId)
+          .eq('linked_to', input.contactId)
+        if (linkedContacts) {
+          contactIds.push(...linkedContacts.map(c => c.id))
+        }
+
+        // Find upcoming appointments for this contact + linked
         const { data: upcoming } = await supabase
           .from('appointments')
-          .select('id, service_type, start_time')
+          .select('id, service_type, start_time, contact_name, contact_id')
           .eq('business_id', input.businessId)
-          .eq('contact_id', input.contactId)
-          .eq('status', 'confirmed')
-          .gte('start_time', new Date().toISOString())
+          .in('contact_id', contactIds)
+          .in('status', ['confirmed', 'pending'])
+          .gte('start_time', nowStr)
           .order('start_time', { ascending: true })
-          .limit(1)
-          .single()
 
-        if (upcoming) {
-          await supabase
-            .from('appointments')
-            .update({ status: 'cancelled' })
-            .eq('id', upcoming.id)
+        if (upcoming && upcoming.length > 0) {
+          // Cancel all upcoming (or just 1 if not "cancel all")
+          const toCancel = params.cancel_all ? upcoming : [upcoming[0]]
+
+          for (const apt of toCancel) {
+            await supabase
+              .from('appointments')
+              .update({ status: 'cancelled' })
+              .eq('id', apt.id)
+          }
+
+          const names = toCancel.map(a => {
+            const time = (a.start_time as string).substring(11, 16)
+            const isLinked = a.contact_id !== input.contactId
+            return `${a.contact_name || ''} ב-${time}${isLinked ? ' (מקושר)' : ''}`
+          }).join(', ')
 
           await supabase.from('notifications').insert({
             business_id: input.businessId,
             type: 'cancelled_appointment',
-            title: 'תור בוטל',
-            body: `${input.contactName} ביטל/ה תור ל${upcoming.service_type}`,
-            metadata: { contact_id: input.contactId, appointment_id: upcoming.id },
+            title: toCancel.length > 1 ? `${toCancel.length} תורים בוטלו` : 'תור בוטל',
+            body: `${input.contactName} ביטל/ה: ${names}`,
+            metadata: { contact_id: input.contactId },
           })
         }
       }

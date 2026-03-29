@@ -353,8 +353,13 @@ export function processState(
 
   // ── Cancel intent ──
   if (extracted.intent === 'cancel') {
-    action = { type: 'cancel_appointment', params: {} }
-    aiInstruction = `הלקוח רוצה לבטל תור. אמור לו שביטלת ושאל אם רוצה לקבוע תור חדש.`
+    // Check if customer wants to cancel ALL appointments (including linked contacts)
+    const cancelAll = /כל התורים|את הכל|הכל|כולם|את כולם|כל מה ש/.test(extracted.notes || '')
+      || /כל התורים|את הכל|הכל|כולם/.test(extracted.service || '')
+    action = { type: 'cancel_appointment', params: { cancel_all: cancelAll } }
+    aiInstruction = cancelAll
+      ? `הלקוח רוצה לבטל את כל התורים (כולל תורים שקבע לאחרים). אמור לו שביטלת הכל.`
+      : `הלקוח רוצה לבטל תור. אמור לו שביטלת ושאל אם רוצה לקבוע תור חדש.`
     return { newState: { step: 'idle' }, aiInstruction, action }
   }
 
