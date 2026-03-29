@@ -108,6 +108,20 @@ function formatDisplayDate(date: Date, mode: ViewMode): string {
   return `${first.getDate()} - ${last.getDate()} ${HEBREW_MONTHS[last.getMonth()]} ${last.getFullYear()}`
 }
 
+// Hebrew date + holiday display
+function getHebrewInfo(date: Date): { hebrewDate: string; holiday: string | null } {
+  try {
+    const { getHebrewDateShort, getHolidayName } = require('@/lib/utils/hebrew-calendar')
+    const dateStr = formatDateKey(date)
+    return {
+      hebrewDate: getHebrewDateShort(dateStr) as string || '',
+      holiday: getHolidayName(dateStr) as string | null,
+    }
+  } catch {
+    return { hebrewDate: '', holiday: null }
+  }
+}
+
 type StatusFilter = 'active' | 'all' | 'cancelled'
 
 const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
@@ -254,9 +268,20 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
             <ChevronRight className="w-5 h-5 text-[#6B7B73]" />
           </button>
 
-          <span className="text-xs sm:text-sm font-medium text-[#1B2E24] text-center flex-1">
-            {formatDisplayDate(currentDate, viewMode)}
-          </span>
+          <div className="text-center flex-1">
+            <span className="text-xs sm:text-sm font-medium text-[#1B2E24]">
+              {formatDisplayDate(currentDate, viewMode)}
+            </span>
+            {viewMode === 'daily' && (() => {
+              const info = getHebrewInfo(currentDate)
+              return (
+                <div className="text-[10px] text-[#8FA89A] mt-0.5">
+                  {info.hebrewDate}
+                  {info.holiday && <span className="text-[var(--color-primary)] font-medium ms-1">· {info.holiday}</span>}
+                </div>
+              )
+            })()}
+          </div>
 
           <button
             onClick={() => navigate('prev')}
@@ -435,14 +460,25 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
                             setViewMode('daily')
                           }}
                         >
-                          <div
-                            className={`text-sm mb-1 ${
-                              isToday
-                                ? 'w-6 h-6 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center font-semibold'
-                                : 'text-[#1B2E24] font-medium'
-                            }`}
-                          >
-                            {date.getDate()}
+                          <div className="flex items-center justify-between mb-1">
+                            <div
+                              className={`text-sm ${
+                                isToday
+                                  ? 'w-6 h-6 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center font-semibold'
+                                  : 'text-[#1B2E24] font-medium'
+                              }`}
+                            >
+                              {date.getDate()}
+                            </div>
+                            {(() => {
+                              const info = getHebrewInfo(date)
+                              return (
+                                <div className="text-[8px] sm:text-[9px] text-[#8FA89A] leading-none text-left">
+                                  {info.hebrewDate && <div>{info.hebrewDate}</div>}
+                                  {info.holiday && <div className="text-[var(--color-primary)] font-medium truncate max-w-[50px]">{info.holiday}</div>}
+                                </div>
+                              )
+                            })()}
                           </div>
 
                           {dayAppointments.length > 0 && (

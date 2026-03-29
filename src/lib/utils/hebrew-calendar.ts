@@ -1,6 +1,104 @@
 // ── Hebrew Calendar + Jewish Holidays ──────────────────
+// Uses @hebcal/core for accurate Hebrew date conversion
 // All dates are Gregorian equivalents for Jewish holidays.
-// Updated annually. Current coverage: 5786-5787 (2025-2027)
+// Coverage: 5786-5787 (2025-2027)
+
+import { HDate, months } from '@hebcal/core'
+
+// ── Hebrew Date Conversion ──────────────────────────
+
+const HEBREW_MONTHS: Record<number, string> = {
+  [months.NISAN]: 'ניסן',
+  [months.IYYAR]: 'אייר',
+  [months.SIVAN]: 'סיון',
+  [months.TAMUZ]: 'תמוז',
+  [months.AV]: 'אב',
+  [months.ELUL]: 'אלול',
+  [months.TISHREI]: 'תשרי',
+  [months.CHESHVAN]: 'חשון',
+  [months.KISLEV]: 'כסלו',
+  [months.TEVET]: 'טבת',
+  [months.SHVAT]: 'שבט',
+  [months.ADAR_I]: 'אדר',
+  [months.ADAR_II]: 'אדר ב׳',
+}
+
+const GEMATRIA_ONES = ['', 'א׳', 'ב׳', 'ג׳', 'ד׳', 'ה׳', 'ו׳', 'ז׳', 'ח׳', 'ט׳']
+const GEMATRIA_TENS = ['', 'י׳', 'כ׳', 'ל׳']
+
+function dayToGematria(day: number): string {
+  if (day === 15) return 'ט״ו'
+  if (day === 16) return 'ט״ז'
+  const tens = Math.floor(day / 10)
+  const ones = day % 10
+  const t = GEMATRIA_TENS[tens] || ''
+  const o = GEMATRIA_ONES[ones] || ''
+  if (t && o) return `${t}${o}`.replace('׳', '״')
+  return t || o
+}
+
+function yearToHebrew(year: number): string {
+  // Simple conversion: 5786 → תשפ"ו
+  const thousands = Math.floor(year / 1000) // Usually 5
+  const hundreds = Math.floor((year % 1000) / 100)
+  const tens = Math.floor((year % 100) / 10)
+  const ones = year % 10
+
+  const hLetters: Record<number, string> = {
+    1: 'א', 2: 'ב', 3: 'ג', 4: 'ד', 5: 'ה', 6: 'ו', 7: 'ז', 8: 'ח', 9: 'ט',
+  }
+  const hTens: Record<number, string> = {
+    1: 'י', 2: 'כ', 3: 'ל', 4: 'מ', 5: 'נ', 6: 'ס', 7: 'ע', 8: 'פ', 9: 'צ',
+  }
+  const hHundreds: Record<number, string> = {
+    1: 'ק', 2: 'ר', 3: 'ש', 4: 'ת', 5: 'תק', 6: 'תר', 7: 'תש', 8: 'תת',
+  }
+
+  let result = ''
+  if (hundreds) result += hHundreds[hundreds] || ''
+  if (tens === 1 && ones === 5) result += 'טו'
+  else if (tens === 1 && ones === 6) result += 'טז'
+  else {
+    if (tens) result += hTens[tens] || ''
+    if (ones) result += hLetters[ones] || ''
+  }
+
+  // Add geresh/gershayim
+  if (result.length > 1) {
+    result = result.slice(0, -1) + '״' + result.slice(-1)
+  } else if (result.length === 1) {
+    result += '׳'
+  }
+
+  return result
+}
+
+/** Convert Gregorian date string (YYYY-MM-DD) to Hebrew date display */
+export function getHebrewDate(dateStr: string): string {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const hd = new HDate(new Date(y, m - 1, d))
+    const day = dayToGematria(hd.getDate())
+    const month = HEBREW_MONTHS[hd.getMonth()] || ''
+    const year = yearToHebrew(hd.getFullYear())
+    return `${day} ${month} ${year}`
+  } catch {
+    return ''
+  }
+}
+
+/** Get short Hebrew date (day + month only) */
+export function getHebrewDateShort(dateStr: string): string {
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const hd = new HDate(new Date(y, m - 1, d))
+    const day = dayToGematria(hd.getDate())
+    const month = HEBREW_MONTHS[hd.getMonth()] || ''
+    return `${day} ${month}`
+  } catch {
+    return ''
+  }
+}
 
 export interface HebrewHoliday {
   name: string
