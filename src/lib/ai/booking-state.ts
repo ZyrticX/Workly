@@ -304,6 +304,23 @@ export function processState(
       aiInstruction = `הלקוח לא רוצה את התור הזה. אמור לו שאין בעיה, ושאל אם הוא רוצה לקבוע בזמן אחר. תהיה נחמד ולא לוחץ.`
       return { newState: { step: 'idle' }, aiInstruction, action: null }
     } else {
+      // Customer might be correcting date/time instead of confirming
+      // e.g. "ביקשתי היום" or "לא, ב-16:30"
+      let needsUpdate = false
+      if (extracted.date && extracted.date !== state.date) {
+        state.date = extracted.date
+        needsUpdate = true
+      }
+      if (extracted.time && extracted.time !== state.time) {
+        state.time = extracted.time
+        needsUpdate = true
+      }
+      if (needsUpdate) {
+        // Re-confirm with updated data
+        state.step = 'confirming'
+        aiInstruction = buildConfirmationInstruction(state)
+        return { newState: state, aiInstruction, action: null }
+      }
       aiInstruction = buildConfirmationInstruction(state) + ' הלקוח לא אישר עדיין, שאל שוב בעדינות אם מאשר.'
       return { newState: state, aiInstruction, action }
     }
