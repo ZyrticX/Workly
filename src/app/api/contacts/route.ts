@@ -30,7 +30,30 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ error: 'איש קשר לא נמצא' }, { status: 404 })
       }
 
-      return NextResponse.json({ contact })
+      // Get linked contacts (sub-clients under this contact)
+      const { data: linkedContacts } = await supabase
+        .from('contacts')
+        .select('id, name, relationship, status, total_visits, total_revenue, created_at')
+        .eq('business_id', bu.business_id)
+        .eq('linked_to', contactId)
+        .order('created_at', { ascending: false })
+
+      // Get who this contact is linked TO (parent contact)
+      let parentContact = null
+      if ((contact as Record<string, unknown>).linked_to) {
+        const { data: parent } = await supabase
+          .from('contacts')
+          .select('id, name, phone')
+          .eq('id', (contact as Record<string, unknown>).linked_to as string)
+          .single()
+        parentContact = parent
+      }
+
+      return NextResponse.json({
+        contact,
+        linkedContacts: linkedContacts || [],
+        parentContact,
+      })
     }
 
     // List contacts with filters

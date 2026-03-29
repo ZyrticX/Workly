@@ -15,6 +15,8 @@ export interface ContactCardData {
   last_visit?: string | null
   total_revenue?: number
   tags?: string[]
+  linked_to?: string | null
+  relationship?: string | null
 }
 
 const STATUS_CONFIG: Record<ContactStatus, { label: string; variant: 'success' | 'warning' | 'danger' | 'info' | 'neutral' }> = {
@@ -79,6 +81,15 @@ export function ContactCard({ contact }: ContactCardProps) {
           <div className="flex items-center gap-2">
             <span className="font-semibold text-[#1B2E24] text-base truncate">
               {displayName}
+              {contact.linked_to && (
+                <span className="text-xs font-normal text-[#8FA89A] ms-1">
+                  ({contact.relationship === 'friend' ? 'חבר' :
+                    contact.relationship === 'mother' ? 'אמא' :
+                    contact.relationship === 'father' ? 'אבא' :
+                    contact.relationship === 'spouse' ? 'בן/בת זוג' :
+                    'מקושר'})
+                </span>
+              )}
             </span>
             <StatusBadge variant={statusCfg.variant}>
               {statusCfg.label}

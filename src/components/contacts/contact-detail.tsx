@@ -30,6 +30,23 @@ interface ContactData {
   total_visits: number
   last_visit?: string
   created_at: string
+  linked_to?: string
+  relationship?: string
+}
+
+interface LinkedContact {
+  id: string
+  name: string
+  relationship?: string
+  status: string
+  total_visits: number
+  total_revenue: number
+}
+
+interface ParentContact {
+  id: string
+  name: string
+  phone: string
 }
 
 interface AppointmentHistoryItem {
@@ -41,7 +58,7 @@ interface AppointmentHistoryItem {
   status: string
 }
 
-type Tab = 'history' | 'conversations' | 'notes'
+type Tab = 'history' | 'conversations' | 'notes' | 'linked'
 
 const STATUS_VARIANT_MAP: Record<ContactStatus, 'success' | 'warning' | 'danger' | 'info' | 'neutral'> = {
   new: 'info',
@@ -86,6 +103,8 @@ interface ContactDetailProps {
 
 export function ContactDetail({ contactId }: ContactDetailProps) {
   const [contact, setContact] = useState<ContactData | null>(null)
+  const [linkedContacts, setLinkedContacts] = useState<LinkedContact[]>([])
+  const [parentContact, setParentContact] = useState<ParentContact | null>(null)
   const [appointments, setAppointments] = useState<AppointmentHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<Tab>('history')
@@ -97,6 +116,8 @@ export function ContactDetail({ contactId }: ContactDetailProps) {
       if (res.ok) {
         const data = await res.json()
         setContact(data.contact ?? null)
+        setLinkedContacts(data.linkedContacts ?? [])
+        setParentContact(data.parentContact ?? null)
       }
     } catch {
       // Silently fail
@@ -147,6 +168,7 @@ export function ContactDetail({ contactId }: ContactDetailProps) {
     { key: 'history', label: 'היסטוריית טיפולים' },
     { key: 'conversations', label: 'שיחות' },
     { key: 'notes', label: 'הערות' },
+    { key: 'linked', label: `מקושרים (${linkedContacts.length})` },
   ]
 
   return (
@@ -318,6 +340,58 @@ export function ContactDetail({ contactId }: ContactDetailProps) {
               ) : (
                 <div className="text-center py-8 text-sm text-[#6B7B73]">
                   אין הערות
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Linked Contacts Tab */}
+          {activeTab === 'linked' && (
+            <div>
+              {/* Parent contact info */}
+              {parentContact && (
+                <div className="mb-4 p-3 bg-blue-50 rounded-xl">
+                  <p className="text-xs text-blue-600 font-medium mb-1">מקושר/ת ל:</p>
+                  <Link href={`/contacts/${parentContact.id}`} className="flex items-center gap-2 hover:bg-blue-100 rounded-lg p-2 -m-2 transition-colors">
+                    <AvatarInitials name={parentContact.name} size="sm" />
+                    <div>
+                      <p className="text-sm font-medium text-[#1B2E24]">{parentContact.name}</p>
+                      <p className="text-xs text-[#6B7B73]">{parentContact.phone}</p>
+                    </div>
+                  </Link>
+                </div>
+              )}
+
+              {/* Linked contacts (sub-clients) */}
+              {linkedContacts.length > 0 ? (
+                <div className="space-y-2">
+                  {linkedContacts.map((lc) => (
+                    <div key={lc.id} className="flex items-center gap-3 p-3 rounded-xl border border-[#E8EFE9] hover:bg-[#F7FAF8] transition-colors">
+                      <AvatarInitials name={lc.name} size="sm" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#1B2E24]">{lc.name}</p>
+                        <p className="text-xs text-[#8FA89A]">
+                          {lc.relationship === 'mother' ? 'אמא' :
+                           lc.relationship === 'father' ? 'אבא' :
+                           lc.relationship === 'friend' ? 'חבר/ה' :
+                           lc.relationship === 'spouse' ? 'בן/בת זוג' :
+                           lc.relationship === 'child' ? 'ילד/ה' :
+                           lc.relationship === 'sibling' ? 'אח/אחות' :
+                           lc.relationship || 'מקושר/ת'}
+                          {lc.total_visits > 0 && ` · ${lc.total_visits} ביקורים`}
+                          {lc.total_revenue > 0 && ` · ${lc.total_revenue} ₪`}
+                        </p>
+                      </div>
+                      <StatusBadge variant={lc.status === 'vip' ? 'warning' : lc.status === 'returning' ? 'success' : 'info'}>
+                        {lc.status === 'new' ? 'חדש' : lc.status === 'returning' ? 'חוזר' : lc.status === 'vip' ? 'VIP' : lc.status}
+                      </StatusBadge>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-sm text-[#6B7B73]">
+                  אין לקוחות מקושרים
+                  <p className="text-xs text-[#8FA89A] mt-1">לקוחות מקושרים נוצרים כשהלקוח מזמין תור לחבר/משפחה</p>
                 </div>
               )}
             </div>
