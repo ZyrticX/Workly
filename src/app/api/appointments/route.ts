@@ -154,6 +154,46 @@ export async function PATCH(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // If status changed → update contact stats
+    if (status && existing.contact_id) {
+      const aptPrice = (data as Record<string, unknown>).price as number || 0
+
+      if (status === 'completed' && existing.service_type) {
+        // Customer came! Add revenue + visit
+        const { data: contact } = await supabase
+          .from('contacts')
+          .select('total_visits, total_revenue')
+          .eq('id', existing.contact_id)
+          .single()
+        if (contact) {
+          await supabase.from('contacts').update({
+            total_visits: (contact.total_visits || 0) + 1,
+            total_revenue: (contact.total_revenue || 0) + aptPrice,
+            status: (contact.total_visits || 0) >= 5 ? 'vip' : (contact.total_visits || 0) >= 1 ? 'returning' : 'active',
+          }).eq('id', existing.contact_id)
+        }
+      }
+
+      if (status === 'cancelled') {
+        // Cancelled — subtract revenue if was completed before
+        // (only if appointment was previously completed)
+        const wasCompleted = (existing as Record<string, unknown>).status === 'completed'
+        if (wasCompleted) {
+          const { data: contact } = await supabase
+            .from('contacts')
+            .select('total_visits, total_revenue')
+            .eq('id', existing.contact_id)
+            .single()
+          if (contact) {
+            await supabase.from('contacts').update({
+              total_visits: Math.max(0, (contact.total_visits || 0) - 1),
+              total_revenue: Math.max(0, (contact.total_revenue || 0) - aptPrice),
+            }).eq('id', existing.contact_id)
+          }
+        }
+      }
+    }
+
     // If rescheduled - notify + send WhatsApp
     if (startTime && startTime !== existing.start_time) {
       const newDate = new Date(startTime)

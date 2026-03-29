@@ -191,7 +191,7 @@ export function CalendarView({ initialDate }: CalendarViewProps) {
 
   function filterByStatus(list: Appointment[]): Appointment[] {
     if (statusFilter === 'active') {
-      return list.filter((a) => a.status === 'confirmed' || a.status === 'scheduled')
+      return list.filter((a) => a.status === 'confirmed' || a.status === 'scheduled' || a.status === 'completed')
     }
     if (statusFilter === 'cancelled') {
       return list.filter((a) => a.status === 'cancelled')

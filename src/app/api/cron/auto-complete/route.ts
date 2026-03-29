@@ -47,30 +47,10 @@ export async function GET() {
 
       completedCount++
 
-      // Update contact stats
-      if (apt.contact_id) {
-        // Increment visits - try RPC first, fallback to manual
-        const rpcResult = await supabase.rpc('increment_contact_visits', {
-          p_contact_id: apt.contact_id,
-        })
-        if (rpcResult.error) {
-          // Fallback: manual increment
-          const { data: contact } = await supabase
-            .from('contacts')
-            .select('total_visits, total_revenue')
-            .eq('id', apt.contact_id)
-            .single()
-          if (contact) {
-            await supabase
-              .from('contacts')
-              .update({
-                total_visits: (contact.total_visits || 0) + 1,
-                status: (contact.total_visits || 0) >= 5 ? 'vip' :
-                        (contact.total_visits || 0) >= 1 ? 'returning' : 'active',
-              })
-              .eq('id', apt.contact_id)
-          }
-        }
+      // NOTE: Revenue and visits are NOT updated here.
+      // They update only when business owner confirms the customer actually came
+      // (via manual "mark as completed" in calendar, or PATCH /api/appointments)
+      // This prevents counting revenue for no-shows.
 
         // Update revenue
         if (apt.price && apt.price > 0) {

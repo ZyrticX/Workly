@@ -563,7 +563,10 @@ ${stateResult.aiInstruction}
       const hasDate = actionParams.date && typeof actionParams.date === 'string' && actionParams.date.length >= 8
       const hasTime = actionParams.time && typeof actionParams.time === 'string' && actionParams.time.includes(':')
       const hasService = actionParams.service && typeof actionParams.service === 'string'
-      if (!hasDate || !hasTime || !hasService) {
+      // Check contact name is real (not "לקוח 382")
+      const bookingName = (actionParams.contact_name as string) || contactCtx.name || ''
+      const nameIsPlaceholder = !bookingName || /^\d+$/.test(bookingName) || bookingName.startsWith('לקוח') || /^\+?\d{7,}/.test(bookingName)
+      if (!hasDate || !hasTime || !hasService || nameIsPlaceholder) {
         console.warn('[agent] Blocked book_appointment with missing params:', { date: actionParams.date, time: actionParams.time, service: actionParams.service })
         // Don't execute — notify owner and ask customer
         parsed.action = null
