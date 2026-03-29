@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
         .eq('wa_id', chatId)
         .single()
 
-      // Backwards compat: old contacts stored wa_id without suffix
+      // Fallback 1: old contacts stored wa_id without suffix
       if (!contact) {
         const { data: legacyContact } = await supabase
           .from('contacts')
@@ -167,29 +167,51 @@ export async function POST(req: NextRequest) {
           .single()
         if (legacyContact) {
           contact = legacyContact
-          // Migrate: update wa_id to include suffix
           await supabase.from('contacts').update({ wa_id: chatId }).eq('id', legacyContact.id)
         }
       }
 
+      // Fallback 2: search by phone number (prevents duplicates from LID/c.us)
+      if (!contact && !isLid && from.startsWith('972')) {
+        const phoneFormatted = '0' + from.slice(3)
+        const { data: phoneContact } = await supabase
+          .from('contacts')
+          .select('id, business_id, wa_id, phone, name, status')
+          .eq('business_id', phone.business_id)
+          .or(`phone.eq.${phoneFormatted},phone.eq.${from}`)
+          .limit(1)
+          .single()
+        if (phoneContact) {
+          contact = phoneContact
+          // Update wa_id to latest format
+          if (phoneContact.wa_id !== chatId) {
+            await supabase.from('contacts').update({ wa_id: chatId }).eq('id', phoneContact.id)
+          }
+        }
+      }
+
+      // Extract WhatsApp display name
+      const whatsappName = (payload.notifyName as string) || ''
+
       if (!contact) {
-        // Extract a display name - for LIDs use notifyName, for regular use phone
-        const displayName = (payload.notifyName as string) || (isLid ? `לקוח ${from.slice(-4)}` : from)
         // Format phone: 972xx → 0xx for display, LID → empty
         let contactPhone = ''
         if (!isLid && from) {
           if (from.startsWith('972') && from.length >= 12) {
-            contactPhone = '0' + from.slice(3) // 972547530955 → 0547530955
+            contactPhone = '0' + from.slice(3)
           } else {
             contactPhone = from
           }
         }
 
+        // Use WhatsApp display name (notifyName), not phone number
+        const displayName = whatsappName || (isLid ? `לקוח ${from.slice(-4)}` : contactPhone)
+
         const { data: newContact, error: contactError } = await supabase
           .from('contacts')
           .insert({
             business_id: phone.business_id,
-            wa_id: chatId, // Store full chatId with @c.us or @lid suffix — send exactly as-is
+            wa_id: chatId,
             phone: contactPhone,
             name: displayName,
             status: 'new',
@@ -215,6 +237,23 @@ export async function POST(req: NextRequest) {
           body: `${newContact!.name} פנה/תה אליך לראשונה בוואטסאפ`,
           metadata: { contact_id: newContact!.id },
         })
+      }
+
+      // Update name from WhatsApp if current name is a placeholder
+      if (contact && whatsappName && whatsappName.length > 1) {
+        const currentName = contact.name || ''
+        const isPlaceholder = !currentName
+          || /^\d+$/.test(currentName)
+          || /^[\d\s]+$/.test(currentName)
+          || currentName.startsWith('לקוח')
+          || currentName.startsWith('972')
+          || currentName.startsWith('05')
+          || /^\+?\d{7,}/.test(currentName)
+        if (isPlaceholder && whatsappName !== currentName) {
+          await supabase.from('contacts').update({ name: whatsappName }).eq('id', contact.id)
+          contact.name = whatsappName
+          console.log(`[webhook] Updated contact name from WhatsApp: "${currentName}" → "${whatsappName}"`)
+        }
       }
 
       // 3. Find or create active conversation
