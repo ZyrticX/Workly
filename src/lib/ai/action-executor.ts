@@ -331,11 +331,15 @@ export async function executeAction(
       const nowStr = `${nowISR.getFullYear()}-${String(nowISR.getMonth() + 1).padStart(2, '0')}-${String(nowISR.getDate()).padStart(2, '0')}T${String(nowISR.getHours()).padStart(2, '0')}:${String(nowISR.getMinutes()).padStart(2, '0')}:00`
 
       if (params.appointment_id) {
-        await supabase
+        const { error: cancelErr } = await supabase
           .from('appointments')
           .update({ status: 'cancelled' })
           .eq('id', params.appointment_id)
           .eq('business_id', input.businessId)
+        if (cancelErr) {
+          console.error('[action-executor] Failed to cancel appointment:', cancelErr.message)
+          throw new ActionError(`Cancel failed: ${cancelErr.message}`, 'לא הצלחתי לבטל את התור. נסה שוב בבקשה.')
+        }
       } else {
         // Get ALL contact IDs: this contact + linked contacts (friends/family booked by this person)
         const contactIds = [input.contactId]
@@ -363,10 +367,14 @@ export async function executeAction(
           const toCancel = params.cancel_all ? upcoming : [upcoming[0]]
 
           for (const apt of toCancel) {
-            await supabase
+            const { error: cancelErr } = await supabase
               .from('appointments')
               .update({ status: 'cancelled' })
               .eq('id', apt.id)
+              .eq('business_id', input.businessId)
+            if (cancelErr) {
+              console.error(`[action-executor] Failed to cancel appointment ${apt.id}:`, cancelErr.message)
+            }
           }
 
           const names = toCancel.map(a => {
