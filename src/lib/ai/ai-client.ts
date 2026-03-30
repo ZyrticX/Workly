@@ -142,55 +142,6 @@ const AGENT_TOOLS = [
   {
     type: 'function' as const,
     function: {
-      name: 'book_appointment',
-      description: 'Book an appointment for the customer. Use ONLY when you have all required details confirmed.',
-      parameters: {
-        type: 'object',
-        properties: {
-          service: { type: 'string', description: 'Service name (must match exactly from the service list)' },
-          date: { type: 'string', description: 'Date in YYYY-MM-DD format' },
-          time: { type: 'string', description: 'Time in HH:MM 24h format' },
-          contact_name: { type: 'string', description: 'Customer name for the appointment' },
-          notes: { type: 'string', description: 'Optional notes' },
-          for_other: { type: 'boolean', description: 'True if booking for someone else (friend/family)' },
-          other_relationship: { type: 'string', description: 'Relationship if for_other (friend, mother, spouse, etc.)' },
-        },
-        required: ['service', 'date', 'time', 'contact_name'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'cancel_appointment',
-      description: 'Cancel the customer\'s upcoming appointment.',
-      parameters: {
-        type: 'object',
-        properties: {
-          cancel_all: { type: 'boolean', description: 'True to cancel ALL appointments, false for just the next one' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'reschedule_appointment',
-      description: 'Reschedule an existing appointment to a new date/time.',
-      parameters: {
-        type: 'object',
-        properties: {
-          service: { type: 'string', description: 'Service name' },
-          date: { type: 'string', description: 'New date in YYYY-MM-DD format' },
-          time: { type: 'string', description: 'New time in HH:MM 24h format' },
-        },
-        required: ['date', 'time'],
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
       name: 'update_contact',
       description: 'Update contact info when customer provides new details (name, gender). Do NOT ask for phone — they are already on WhatsApp.',
       parameters: {

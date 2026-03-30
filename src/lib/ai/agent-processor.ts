@@ -566,7 +566,9 @@ ${stateResult.aiInstruction}
 - אם הלקוח חוזר, הראה שאתה זוכר אותו.
 - ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.
 - **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
-- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים) — השתמש ב-tools שזמינים לך. אל תכתוב JSON בגוף ההודעה.
+- **אל תנסה לקבוע/לבטל/להזיז תור בעצמך. המערכת מנהלת את זה אוטומטית.**
+- אם הלקוח רוצה לדבר עם בן אדם — השתמש ב-tool escalate.
+- כשלומדים שם או מגדר חדש — השתמש ב-tool update_contact.
 - **חובה**: תמיד כתוב הודעה ללקוח בנוסף לשימוש ב-tool! אל תשלח tool בלי טקסט.`
 
     const toolResponse = await generateResponseWithTools(
@@ -577,34 +579,25 @@ ${stateResult.aiInstruction}
 
     let cleanText = cleanAIResponse(toolResponse.text || '')
 
-    // Merge: state machine action takes priority, then tool calls
-    let action = stateResult.action
+    // Action comes ONLY from state machine — AI cannot book/cancel/reschedule
+    const action = stateResult.action
+
+    // Process AI tool calls: only update_contact and escalate are allowed
     const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+    let escalated = false
 
-    // Process multiple tool calls: primary action + side effects (like update_contact)
-    // IMPORTANT: If state machine already has a booking action, IGNORE booking tool calls
-    // from the AI to prevent double-booking (state machine already validated & will execute)
-    let sideEffectAction: { type: string; params: Record<string, unknown> } | null = null
-    const bookingTypes = ['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'escalate']
     for (const tc of allToolActions) {
-      if (!action && bookingTypes.includes(tc.type)) {
-        action = tc
-      } else if (tc.type === 'update_contact') {
-        sideEffectAction = tc
-      } else if (!action && !bookingTypes.includes(tc.type)) {
-        action = tc
+      if (tc.type === 'update_contact') {
+        try {
+          await executeAction(tc, input, settingsResult.data)
+          console.log(`[agent] Side-effect tool call executed: update_contact`)
+        } catch (sideErr) {
+          console.warn(`[agent] update_contact failed (non-critical): ${sideErr}`)
+        }
+      } else if (tc.type === 'escalate') {
+        escalated = true
       }
-      // If state machine already set an action, skip duplicate booking tool calls silently
-    }
-
-    // Execute side-effect tool calls immediately (e.g., update_contact alongside a booking)
-    if (sideEffectAction) {
-      try {
-        await executeAction(sideEffectAction, input, settingsResult.data)
-        console.log(`[agent] Side-effect tool call executed: ${sideEffectAction.type}`)
-      } catch (sideErr) {
-        console.warn(`[agent] Side-effect tool call failed (non-critical): ${sideErr}`)
-      }
+      // Silently ignore any booking tool calls — state machine is the sole owner
     }
 
     // If model returned tool calls but no text, generate fallback text
@@ -617,7 +610,7 @@ ${stateResult.aiInstruction}
       intent: extracted.intent || 'other',
       confidence: 0.9,
       action,
-      escalated: false,
+      escalated,
     }
   } else {
     // No state machine instruction - free AI response with tool calling
@@ -627,7 +620,8 @@ ${stateResult.aiInstruction}
 אם הלקוח שואל שאלה שאתה לא יודע - אמור שתבדוק ותחזור אליו.
 אם הלקוח רוצה לדבר עם בן אדם - השתמש ב-tool escalate.
 **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
-- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים, העברה לבעל העסק) — השתמש ב-tools שזמינים לך. אל תכתוב JSON.
+- **אל תנסה לקבוע/לבטל/להזיז תור בעצמך. המערכת מנהלת את זה אוטומטית.**
+- כשלומדים שם או מגדר חדש — השתמש ב-tool update_contact.
 - **חובה**: תמיד כתוב הודעה ללקוח בנוסף לשימוש ב-tool! אל תשלח tool בלי טקסט.`
 
     const toolResponse = await generateResponseWithTools(
@@ -638,29 +632,25 @@ ${stateResult.aiInstruction}
 
     let cleanText = cleanAIResponse(toolResponse.text || '')
 
-    // Process multiple tool calls
-    let action = stateResult.action
+    // Action comes ONLY from state machine — AI cannot book/cancel/reschedule
+    const action = stateResult.action
+
+    // Process AI tool calls: only update_contact and escalate are allowed
     const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+    let escalated = false
 
-    let sideEffectAction: { type: string; params: Record<string, unknown> } | null = null
     for (const tc of allToolActions) {
-      if (!action && (tc.type === 'book_appointment' || tc.type === 'cancel_appointment' || tc.type === 'reschedule_appointment' || tc.type === 'escalate')) {
-        action = tc
-      } else if (tc.type === 'update_contact') {
-        sideEffectAction = tc
-      } else if (!action) {
-        action = tc
+      if (tc.type === 'update_contact') {
+        try {
+          await executeAction(tc, input, settingsResult.data)
+          console.log(`[agent] Side-effect tool call executed: update_contact`)
+        } catch (sideErr) {
+          console.warn(`[agent] update_contact failed (non-critical): ${sideErr}`)
+        }
+      } else if (tc.type === 'escalate') {
+        escalated = true
       }
-    }
-
-    // Execute side-effect tool calls immediately
-    if (sideEffectAction) {
-      try {
-        await executeAction(sideEffectAction, input, settingsResult.data)
-        console.log(`[agent] Side-effect tool call executed: ${sideEffectAction.type}`)
-      } catch (sideErr) {
-        console.warn(`[agent] Side-effect tool call failed (non-critical): ${sideErr}`)
-      }
+      // Silently ignore any booking tool calls — state machine is the sole owner
     }
 
     // If model returned tool calls but no text, generate fallback text
@@ -668,19 +658,12 @@ ${stateResult.aiInstruction}
       cleanText = generateFallbackText(action.type, contactCtx.name)
     }
 
-    // If AI made a booking/cancel action in free-response mode, reset booking_state to idle
-    // This prevents stale state (e.g. collecting_time) from persisting after a successful action
-    if (action && ['book_appointment', 'cancel_appointment', 'reschedule_appointment'].includes(action.type)) {
-      await saveBookingState(input.conversationId, { step: 'idle' })
-      console.log(`[agent] Reset booking_state to idle after free-response ${action.type}`)
-    }
-
     parsed = {
       text: cleanText,
       intent: extracted.intent || 'other',
       confidence: 0.5,
       action,
-      escalated: allToolActions.some(tc => tc.type === 'escalate')
+      escalated: escalated
         || (cleanText.includes('מעביר') || cleanText.includes('אעביר') || cleanText.includes('יצור איתך קשר')),
     }
   }
@@ -737,25 +720,13 @@ ${stateResult.aiInstruction}
       // Use customer-facing message from ActionError if available
       if (err instanceof ActionError) {
         parsed.text = err.customerMessage
-        // Return to collecting_time for time conflicts — but ONLY if state machine
-        // was managing the booking. If action came from free-response tool call,
-        // reset to idle to prevent zombie state.
+        // All bookings come from state machine — return to collecting_time on conflict
         if (errMsg.includes('TIME_SLOT_CONFLICT')) {
-          const wasStateMachineBooking = stateResult.aiInstruction && stateResult.action
-          if (wasStateMachineBooking) {
-            await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
-          } else {
-            await saveBookingState(input.conversationId, { step: 'idle' })
-          }
+          await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
         }
       } else if (errMsg.includes('TIME_SLOT_CONFLICT')) {
         parsed.text = ERROR_MESSAGES.TIME_SLOT_CONFLICT
-        const wasStateMachineBooking = stateResult.aiInstruction && stateResult.action
-        if (wasStateMachineBooking) {
-          await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
-        } else {
-          await saveBookingState(input.conversationId, { step: 'idle' })
-        }
+        await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
       } else {
         if (parsed.text === '__BOOKING_PENDING__') {
           parsed.text = ERROR_MESSAGES.DB_INSERT_ERROR
