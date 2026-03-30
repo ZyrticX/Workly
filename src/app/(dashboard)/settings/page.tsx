@@ -929,7 +929,12 @@ export default function SettingsPage() {
       setSavedSection(section)
       toast('ההגדרות נשמרו בהצלחה', 'success')
       // Invalidate Redis cache so bot uses new settings immediately
-      fetch('/api/cache', { method: 'POST' }).catch(() => {})
+      try {
+        const cacheRes = await fetch('/api/cache', { method: 'POST' })
+        if (!cacheRes.ok) console.error('Cache invalidation failed:', cacheRes.status)
+      } catch (cacheErr) {
+        console.error('Cache invalidation error:', cacheErr)
+      }
       setTimeout(() => setSavedSection(null), 2000)
     } catch (err) {
       console.error(`Failed to save ${section}:`, err)

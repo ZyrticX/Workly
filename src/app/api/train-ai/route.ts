@@ -64,6 +64,14 @@ export async function POST(request: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Invalidate Redis cache so bot picks up new AI config immediately
+    try {
+      const { invalidatePattern } = await import('@/lib/cache/redis')
+      await invalidatePattern(`biz:${bu.business_id}:*`)
+    } catch (cacheErr) {
+      console.error('[train-ai] Cache invalidation failed:', cacheErr)
+    }
+
     return NextResponse.json({ success: true })
   } catch {
     return NextResponse.json({ error: 'שגיאת שרת' }, { status: 500 })

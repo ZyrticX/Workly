@@ -95,8 +95,8 @@ export const CACHE_KEYS = {
 }
 
 export const CACHE_TTL = {
-  SETTINGS: 3600,      // 1 hour — settings rarely change
-  PERSONA: 3600,       // 1 hour
+  SETTINGS: 300,       // 5 minutes — reduced for faster propagation
+  PERSONA: 300,        // 5 minutes — reduced for faster propagation
   CONTACT: 300,        // 5 minutes — contacts can change
   APPOINTMENTS: 60,    // 1 minute — appointments change frequently
 }
