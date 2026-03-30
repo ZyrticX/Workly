@@ -82,7 +82,7 @@ export async function processAIAgent(
 
   // Load upcoming appointments for this contact + linked contacts (booked by this contact)
   const israelNowForApts = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-  const todayForApts = `${israelNowForApts.getFullYear()}-${String(israelNowForApts.getMonth() + 1).padStart(2, '0')}-${String(israelNowForApts.getDate()).padStart(2, '0')}T00:00:00`
+  const nowForApts = `${israelNowForApts.getFullYear()}-${String(israelNowForApts.getMonth() + 1).padStart(2, '0')}-${String(israelNowForApts.getDate()).padStart(2, '0')}T${String(israelNowForApts.getHours()).padStart(2, '0')}:${String(israelNowForApts.getMinutes()).padStart(2, '0')}:00`
 
   // Get own appointments
   const { data: ownApts } = await supabase
@@ -91,7 +91,7 @@ export async function processAIAgent(
     .eq('business_id', input.businessId)
     .eq('contact_id', input.contactId)
     .in('status', ['confirmed', 'pending'])
-    .gte('start_time', todayForApts)
+    .gte('start_time', nowForApts)
     .order('start_time')
     .limit(5)
 
@@ -111,7 +111,7 @@ export async function processAIAgent(
       .eq('business_id', input.businessId)
       .in('contact_id', linkedIds)
       .in('status', ['confirmed', 'pending'])
-      .gte('start_time', todayForApts)
+      .gte('start_time', nowForApts)
       .order('start_time')
       .limit(5)
     linkedApts = data || []
