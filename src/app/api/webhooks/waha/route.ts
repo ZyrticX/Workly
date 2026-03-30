@@ -169,6 +169,11 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ ok: true })
       }
 
+      // Skip WhatsApp Status/Stories broadcasts
+      if (rawFrom === 'status@broadcast') {
+        return NextResponse.json({ ok: true })
+      }
+
       // Skip group messages (group IDs contain a hyphen, but not LIDs)
       if (from.includes('-') && !isLid) {
         return NextResponse.json({ ok: true })
