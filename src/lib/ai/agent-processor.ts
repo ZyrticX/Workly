@@ -7,6 +7,33 @@ import { executeAction, formatDateHebrew } from './action-executor'
 import { logError } from '@/lib/utils/error-logger'
 import { cached, CACHE_KEYS, CACHE_TTL } from '@/lib/cache/redis'
 
+// ── Clean AI response: strip JSON, code blocks, and mixed content ──
+
+function cleanAIResponse(raw: string): string {
+  let text = raw.trim()
+
+  // 1. Remove markdown code blocks
+  text = text.replace(/```json\n?[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim()
+
+  // 2. Try parsing as pure JSON → extract "text" field
+  try {
+    const parsed = JSON.parse(text)
+    if (parsed.text) return parsed.text.trim()
+    if (parsed.response) return parsed.response.trim()
+  } catch { /* not pure JSON */ }
+
+  // 3. Remove inline JSON objects from mixed text (e.g. "היי!\n\n{...}")
+  text = text.replace(/\{[\s\S]*?"text"\s*:\s*"[\s\S]*?\}/g, '').trim()
+  // Also remove any remaining JSON-like blocks
+  text = text.replace(/\{[^{}]*"intent"[^{}]*\}/g, '').trim()
+  text = text.replace(/\{[^{}]*"action"[^{}]*\}/g, '').trim()
+
+  // 4. Clean up leftover whitespace/newlines
+  text = text.replace(/\n{3,}/g, '\n\n').trim()
+
+  return text || raw.trim()
+}
+
 // ── Main Agent Processor ────────────────────────────────
 
 export async function processAIAgent(
@@ -467,13 +494,18 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
 
   // 7. Generate response
   const aiAdvanced = (settingsResult.data?.ai_advanced as AdvancedAIConfig) || null
+  // If name is placeholder, override contactCtx so the AI doesn't use "לקוח 2589" as a real name
+  const promptContactCtx = contactNameIsPlaceholder
+    ? { ...contactCtx, name: '' }
+    : contactCtx
   const baseSystemPrompt = buildSystemPrompt(
     businessResult.data,
     settingsResult.data,
     personaResult.data,
-    contactCtx,
+    promptContactCtx,
     aiAdvanced
   ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" — הצג את כל התורים מהרשימה למעלה. אם יש תורים שקבע לאחרים, אמור "וגם קבעת תור ל[שם] ב-[שעה]".`
+  + (contactNameIsPlaceholder ? `\n\n## חשוב — השם של הלקוח לא ידוע!\nהשם שיש לנו הוא מזהה זמני בלבד. **אל תקרא ללקוח "${contactCtx.name}"!** פנה אליו בצורה ידידותית בלי שם (למשל "היי!" או "אהלן!"). ברגע הראשון הנוח — שאל "איך קוראים לך?" ושלח action update_contact עם השם שהוא נותן.` : '')
 
   let parsed: ParsedAIResponse
 
@@ -499,7 +531,8 @@ ${stateResult.aiInstruction}
 - תהיה קצר - 1-3 משפטים מקסימום.
 - אל תחזור על מידע שכבר נאמר בשיחה.
 - אם הלקוח חוזר, הראה שאתה זוכר אותו.
-- ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.`
+- ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.
+- **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ. לעולם אל תגיד "אפשר מספר טלפון", "תן מספר", "מספר ליצירת קשר" או כל וריאציה.**`
 
     const aiResponse = await generateResponse(
       guidedPrompt,
@@ -507,14 +540,7 @@ ${stateResult.aiInstruction}
       input.message
     )
 
-    // Clean response - remove any JSON wrapping
-    let cleanText = aiResponse.replace(/```json\n?|```/g, '').trim()
-    try {
-      const maybeJson = JSON.parse(cleanText)
-      cleanText = maybeJson.text || maybeJson.response || cleanText
-    } catch {
-      // Not JSON, good - it's plain text
-    }
+    const cleanText = cleanAIResponse(aiResponse)
 
     parsed = {
       text: cleanText,
@@ -529,7 +555,8 @@ ${stateResult.aiInstruction}
 
 ענה בעברית טבעית, חמה, כאילו אתה חבר. 1-3 משפטים. בלי JSON.
 אם הלקוח שואל שאלה שאתה לא יודע - אמור שתבדוק ותחזור אליו.
-אם הלקוח רוצה לדבר עם בן אדם - אמור שאתה מעביר לבעל העסק.`
+אם הלקוח רוצה לדבר עם בן אדם - אמור שאתה מעביר לבעל העסק.
+**אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**`
 
     const aiResponse = await generateResponse(
       freePrompt,
@@ -537,13 +564,7 @@ ${stateResult.aiInstruction}
       input.message
     )
 
-    let cleanText = aiResponse.replace(/```json\n?|```/g, '').trim()
-    try {
-      const maybeJson = JSON.parse(cleanText)
-      cleanText = maybeJson.text || maybeJson.response || cleanText
-    } catch {
-      // Plain text
-    }
+    const cleanText = cleanAIResponse(aiResponse)
 
     parsed = {
       text: cleanText,

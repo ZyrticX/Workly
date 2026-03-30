@@ -87,15 +87,17 @@ export async function executeAction(
         // to catch AI sending wrong time
         const { data: recentMsgs } = await supabase
           .from('messages')
-          .select('content')
+          .select('content, direction')
           .eq('conversation_id', input.conversationId)
-          .eq('direction', 'inbound')
           .order('created_at', { ascending: false })
-          .limit(5)
+          .limit(10)
 
         if (recentMsgs) {
           // Check if customer mentioned a different time than what AI is booking
-          const customerMessages = recentMsgs.map(m => m.content || '').join(' ')
+          // ONLY check inbound (customer) messages — not AI messages!
+          const customerMessages = recentMsgs
+            .filter(m => m.direction === 'inbound')
+            .map(m => m.content || '').join(' ')
           const timesMentioned = customerMessages.match(/\d{1,2}:\d{2}/g) || []
           if (timesMentioned.length > 0) {
             const lastTimeMentioned = timesMentioned[timesMentioned.length - 1]
