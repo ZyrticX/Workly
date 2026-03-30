@@ -537,7 +537,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
     personaResult.data,
     promptContactCtx,
     aiAdvanced
-  ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" — הצג את כל התורים מהרשימה למעלה. אם יש תורים שקבע לאחרים, אמור "וגם קבעת תור ל[שם] ב-[שעה]".`
+  ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" או "מה התורים שלי" — הצג את כל התורים מהרשימה למעלה, כולל תורים שקבע לאחרים.\n**חשוב**: תורים המסומנים "(קבעת עבורו/ה)" הם תורים שהלקוח הנוכחי קבע לחבר/משפחה שלו. זה **לא** מידע של לקוח אחר — זה המידע של הלקוח הנוכחי! מותר ואף חובה לספר לו על התורים האלה. למשל: "יש לך תור ב-20:30, ו**גם** קבעת ליוסי תור ב-21:00".`
   + (contactNameIsPlaceholder ? `\n\n## חשוב — השם של הלקוח לא ידוע!\nהשם שיש לנו הוא מזהה זמני בלבד. **אל תקרא ללקוח "${contactCtx.name}"!** פנה אליו בצורה ידידותית בלי שם (למשל "היי!" או "אהלן!"). ברגע הראשון הנוח — שאל "איך קוראים לך?" והשתמש ב-tool update_contact עם השם שהוא נותן.` : '')
 
   let parsed: ParsedAIResponse
@@ -582,15 +582,19 @@ ${stateResult.aiInstruction}
     const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
 
     // Process multiple tool calls: primary action + side effects (like update_contact)
+    // IMPORTANT: If state machine already has a booking action, IGNORE booking tool calls
+    // from the AI to prevent double-booking (state machine already validated & will execute)
     let sideEffectAction: { type: string; params: Record<string, unknown> } | null = null
+    const bookingTypes = ['book_appointment', 'cancel_appointment', 'reschedule_appointment', 'escalate']
     for (const tc of allToolActions) {
-      if (!action && (tc.type === 'book_appointment' || tc.type === 'cancel_appointment' || tc.type === 'reschedule_appointment' || tc.type === 'escalate')) {
+      if (!action && bookingTypes.includes(tc.type)) {
         action = tc
       } else if (tc.type === 'update_contact') {
         sideEffectAction = tc
-      } else if (!action) {
+      } else if (!action && !bookingTypes.includes(tc.type)) {
         action = tc
       }
+      // If state machine already set an action, skip duplicate booking tool calls silently
     }
 
     // Execute side-effect tool calls immediately (e.g., update_contact alongside a booking)
@@ -662,6 +666,13 @@ ${stateResult.aiInstruction}
     // If model returned tool calls but no text, generate fallback text
     if (!cleanText && action) {
       cleanText = generateFallbackText(action.type, contactCtx.name)
+    }
+
+    // If AI made a booking/cancel action in free-response mode, reset booking_state to idle
+    // This prevents stale state (e.g. collecting_time) from persisting after a successful action
+    if (action && ['book_appointment', 'cancel_appointment', 'reschedule_appointment'].includes(action.type)) {
+      await saveBookingState(input.conversationId, { step: 'idle' })
+      console.log(`[agent] Reset booking_state to idle after free-response ${action.type}`)
     }
 
     parsed = {
