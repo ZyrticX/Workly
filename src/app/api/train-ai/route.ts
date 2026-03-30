@@ -25,7 +25,19 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    return NextResponse.json({ ai_advanced: data?.ai_advanced || null })
+    // Also load conversation_style from ai_personas
+    const { data: persona } = await supabase
+      .from('ai_personas')
+      .select('conversation_style')
+      .eq('business_id', bu.business_id)
+      .single()
+
+    const config = data?.ai_advanced || {}
+    if (persona?.conversation_style) {
+      config.conversationStyle = persona.conversation_style
+    }
+
+    return NextResponse.json({ ai_advanced: config })
   } catch {
     return NextResponse.json({ error: 'שגיאת שרת' }, { status: 500 })
   }
@@ -63,6 +75,19 @@ export async function POST(request: NextRequest) {
       )
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+    // If conversationStyle is provided, also save to ai_personas
+    if (ai_advanced.conversationStyle) {
+      await supabase
+        .from('ai_personas')
+        .upsert(
+          {
+            business_id: bu.business_id,
+            conversation_style: ai_advanced.conversationStyle,
+          },
+          { onConflict: 'business_id' }
+        )
+    }
 
     // Invalidate Redis cache so bot picks up new AI config immediately
     try {

@@ -13,6 +13,9 @@ import {
   Check,
   Sparkles,
   ChevronDown,
+  Upload,
+  X,
+  Camera,
 } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────
@@ -47,11 +50,12 @@ interface AiAdvancedConfig {
     exampleMessage: string
     faqs: FaqItem[]
   }
+  conversationStyle?: string
 }
 
 // ── Constants ──────────────────────────────────────────
 
-const TOTAL_STEPS = 5
+const TOTAL_STEPS = 6
 
 const GOAL_OPTIONS: { value: BusinessGoal; icon: string; label: string; desc: string }[] = [
   { value: 'bookings', icon: '📅', label: 'למלא את היומן', desc: 'הסוכן יתמקד בקביעת תורים ומילוי זמנים פנויים' },
@@ -184,6 +188,11 @@ export default function TrainAiPage() {
   const [exampleMessage, setExampleMessage] = useState('')
   const [faqs, setFaqs] = useState<FaqItem[]>(getDefaultFaqs)
 
+  // Step 6
+  const [conversationStyle, setConversationStyle] = useState('')
+  const [styleImages, setStyleImages] = useState<File[]>([])
+  const [analyzingStyle, setAnalyzingStyle] = useState(false)
+
   // ── Load existing config ───────────────────────────
 
   useEffect(() => {
@@ -206,6 +215,7 @@ export default function TrainAiPage() {
           if (c.rules) setRules({ ...DEFAULT_RULES, ...c.rules })
           if (c.signature?.exampleMessage) setExampleMessage(c.signature.exampleMessage)
           if (c.signature?.faqs?.length) setFaqs(c.signature.faqs)
+          if (c.conversationStyle) setConversationStyle(c.conversationStyle)
         }
       } catch {
         // First time - use defaults
@@ -227,7 +237,8 @@ export default function TrainAiPage() {
       exampleMessage,
       faqs,
     },
-  }), [businessGoal, salesStyle, upsells, rules, exampleMessage, faqs])
+    conversationStyle: conversationStyle || undefined,
+  }), [businessGoal, salesStyle, upsells, rules, exampleMessage, faqs, conversationStyle])
 
   // ── Save ───────────────────────────────────────────
 
@@ -325,6 +336,28 @@ export default function TrainAiPage() {
 
   const updateFaq = (id: string, field: 'question' | 'answer', value: string) => {
     setFaqs(faqs.map(f => f.id === id ? { ...f, [field]: value } : f))
+  }
+
+  // ── Analyze style from screenshots ────────────
+
+  const analyzeStyle = async () => {
+    if (styleImages.length === 0) return
+    setAnalyzingStyle(true)
+    try {
+      const formData = new FormData()
+      styleImages.forEach(f => formData.append('images', f))
+      const res = await fetch('/api/train-ai/analyze-style', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.style) {
+        setConversationStyle(data.style)
+      }
+    } catch {
+      // Silently handle
+    }
+    setAnalyzingStyle(false)
   }
 
   // ── Loading state ──────────────────────────────────
@@ -546,6 +579,16 @@ export default function TrainAiPage() {
             addFaq={addFaq}
             removeFaq={removeFaq}
             updateFaq={updateFaq}
+          />
+        )}
+        {step === 6 && (
+          <Step6
+            styleImages={styleImages}
+            setStyleImages={setStyleImages}
+            conversationStyle={conversationStyle}
+            setConversationStyle={setConversationStyle}
+            analyzing={analyzingStyle}
+            onAnalyze={analyzeStyle}
           />
         )}
       </div>
@@ -993,6 +1036,139 @@ function Step5({
           <Plus className="w-4 h-4" />
           הוסף שאלה
         </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Step 6: Conversation Style from Screenshots ──
+
+function Step6({
+  styleImages,
+  setStyleImages,
+  conversationStyle,
+  setConversationStyle,
+  analyzing,
+  onAnalyze,
+}: {
+  styleImages: File[]
+  setStyleImages: (files: File[]) => void
+  conversationStyle: string
+  setConversationStyle: (v: string) => void
+  analyzing: boolean
+  onAnalyze: () => void
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const [previews, setPreviews] = useState<string[]>([])
+
+  // Generate previews when images change
+  useEffect(() => {
+    const urls = styleImages.map(f => URL.createObjectURL(f))
+    setPreviews(urls)
+    return () => urls.forEach(u => URL.revokeObjectURL(u))
+  }, [styleImages])
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) return
+    const newFiles = Array.from(files).filter(f => f.type.startsWith('image/'))
+    const combined = [...styleImages, ...newFiles].slice(0, 5)
+    setStyleImages(combined)
+  }
+
+  const removeImage = (index: number) => {
+    setStyleImages(styleImages.filter((_, i) => i !== index))
+  }
+
+  return (
+    <div>
+      <div className="text-center mb-6">
+        <h2 className="text-xl font-bold text-[var(--color-text)] mb-1">
+          אופי שיחה
+        </h2>
+        <p className="text-sm text-[var(--color-text-secondary)]">
+          העלה צילומי מסך של שיחות עם לקוחות — ה-AI ילמד את הסגנון שלך
+        </p>
+      </div>
+
+      {/* Upload zone */}
+      <div className="glass-card rounded-[var(--radius-card)] shadow-ios p-4 mb-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={e => handleFiles(e.target.files)}
+        />
+
+        {/* Image previews */}
+        {previews.length > 0 && (
+          <div className="grid grid-cols-3 gap-2 mb-4">
+            {previews.map((url, i) => (
+              <div key={i} className="relative aspect-[9/16] rounded-xl overflow-hidden bg-[var(--color-surface)]">
+                <img src={url} alt={`צילום ${i + 1}`} className="w-full h-full object-cover" />
+                <button
+                  onClick={() => removeImage(i)}
+                  className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center"
+                >
+                  <X className="w-3.5 h-3.5 text-white" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {styleImages.length < 5 && (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex flex-col items-center gap-2 py-6 rounded-xl border-2 border-dashed border-[var(--color-border)] text-[var(--color-primary)] hover:bg-[var(--color-primary-light)] transition-colors press-effect"
+          >
+            <Camera className="w-6 h-6" />
+            <span className="text-sm font-medium">
+              {styleImages.length === 0 ? 'העלה צילומי מסך' : `הוסף עוד (${styleImages.length}/5)`}
+            </span>
+            <span className="text-xs text-[var(--color-text-muted)]">
+              עד 5 תמונות של שיחות WhatsApp
+            </span>
+          </button>
+        )}
+
+        {styleImages.length > 0 && (
+          <button
+            onClick={onAnalyze}
+            disabled={analyzing}
+            className="w-full flex items-center justify-center gap-2 py-3 mt-3 text-sm font-semibold text-white rounded-[var(--radius-button)] btn-primary press-effect transition-ios disabled:opacity-50 min-h-[48px]"
+          >
+            {analyzing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                מנתח סגנון...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4" />
+                נתח אופי שיחה
+              </>
+            )}
+          </button>
+        )}
+      </div>
+
+      {/* Result / editable style */}
+      <div className="glass-card rounded-[var(--radius-card)] shadow-ios p-4">
+        <label className="text-sm font-medium text-[var(--color-text)] mb-2 block">
+          פרופיל סגנון {conversationStyle ? '(ניתן לערוך)' : ''}
+        </label>
+        <textarea
+          value={conversationStyle}
+          onChange={e => setConversationStyle(e.target.value)}
+          placeholder="לאחר ניתוח התמונות, כאן יופיע פרופיל הסגנון שלך. אפשר גם לכתוב ידנית..."
+          rows={6}
+          className="w-full px-3 py-2.5 text-sm rounded-[var(--radius-badge)] border border-[var(--color-border)] bg-white placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] transition-shadow resize-none"
+        />
+        <p className="text-xs text-[var(--color-text-muted)] mt-2">
+          הסוכן ישתמש בפרופיל הזה כדי לחקות את סגנון הדיבור שלך
+        </p>
       </div>
     </div>
   )
