@@ -26,6 +26,20 @@ export function addMinutesToTimeString(startTime: string, minutes: number): stri
 
 // ActionError imported from ./error-messages
 
+// Normalize relationship values (Hebrew → English) for consistent storage
+const RELATIONSHIP_MAP: Record<string, string> = {
+  'חבר': 'friend', 'חברה': 'friend',
+  'אמא': 'mother', 'אבא': 'father',
+  'בן זוג': 'spouse', 'בת זוג': 'spouse',
+  'ילד': 'child', 'ילדה': 'child',
+  'אח': 'sibling', 'אחות': 'sibling',
+}
+
+function normalizeRelationship(raw: string): string {
+  const trimmed = raw.trim().toLowerCase()
+  return RELATIONSHIP_MAP[trimmed] || trimmed
+}
+
 export async function executeAction(
   action: { type: string; params: Record<string, unknown> },
   input: AgentInput,
@@ -230,23 +244,24 @@ export async function executeAction(
           // If booking for someone else, create a linked contact
           let bookingContactId = input.contactId
           if (isForOther && params.contact_name) {
-            const otherName = params.contact_name as string
-            const relationship = (params.other_relationship as string) || 'other'
+            const otherName = (params.contact_name as string).trim()
+            const rawRelationship = (params.other_relationship as string) || 'other'
+            const relationship = normalizeRelationship(rawRelationship)
 
-            // Check if linked contact already exists
+            // Check if linked contact already exists (case-insensitive)
             const { data: existingLinked } = await supabase
               .from('contacts')
               .select('id')
               .eq('business_id', input.businessId)
               .eq('linked_to', input.contactId)
-              .eq('name', otherName)
+              .ilike('name', otherName)
               .single()
 
             if (existingLinked) {
               bookingContactId = existingLinked.id
             } else {
               // Create new linked contact
-              const { data: newContact } = await supabase
+              const { data: newContact, error: linkError } = await supabase
                 .from('contacts')
                 .insert({
                   business_id: input.businessId,
@@ -261,9 +276,14 @@ export async function executeAction(
                 .select('id')
                 .single()
 
-              if (newContact) {
-                bookingContactId = newContact.id
+              if (linkError || !newContact) {
+                console.error('[action-executor] Failed to create linked contact:', linkError?.message)
+                throw new ActionError(
+                  `Failed to create linked contact: ${linkError?.message}`,
+                  'לא הצלחתי ליצור את איש הקשר. נסה שוב בבקשה.'
+                )
               }
+              bookingContactId = newContact.id
             }
           }
 

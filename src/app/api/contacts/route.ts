@@ -108,10 +108,23 @@ export async function POST(request: NextRequest) {
     if (!bu) return NextResponse.json({ error: 'עסק לא נמצא' }, { status: 404 })
 
     const body = await request.json()
-    const { name, phone, tags, notes, birthday } = body
+    const { name, phone, tags, notes, birthday, linked_to, relationship } = body
 
     if (!name || !phone) {
       return NextResponse.json({ error: 'שם וטלפון הם שדות חובה' }, { status: 400 })
+    }
+
+    // Validate linked_to if provided
+    if (linked_to) {
+      const { data: parentContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('id', linked_to)
+        .eq('business_id', bu.business_id)
+        .single()
+      if (!parentContact) {
+        return NextResponse.json({ error: 'איש קשר מקושר לא נמצא' }, { status: 400 })
+      }
     }
 
     const { data, error } = await supabase
@@ -125,6 +138,8 @@ export async function POST(request: NextRequest) {
         notes: notes || null,
         birthday: birthday || null,
         status: 'new',
+        linked_to: linked_to || null,
+        relationship: relationship || null,
       })
       .select()
       .single()
@@ -157,7 +172,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, phone, tags, notes, birthday, status } = body
+    const { name, phone, tags, notes, birthday, status, linked_to, relationship } = body
 
     // Build update payload with only provided fields
     const updateData: Record<string, unknown> = {}
@@ -170,6 +185,33 @@ export async function PATCH(request: NextRequest) {
     if (notes !== undefined) updateData.notes = notes
     if (birthday !== undefined) updateData.birthday = birthday || null
     if (status !== undefined) updateData.status = status
+    if (relationship !== undefined) updateData.relationship = relationship || null
+    if (linked_to !== undefined) {
+      if (linked_to === null) {
+        updateData.linked_to = null
+        updateData.relationship = null
+      } else {
+        // Prevent self-link
+        if (linked_to === contactId) {
+          return NextResponse.json({ error: 'לא ניתן לקשר איש קשר לעצמו' }, { status: 400 })
+        }
+        // Validate parent exists in same business
+        const { data: parentContact } = await supabase
+          .from('contacts')
+          .select('id, linked_to')
+          .eq('id', linked_to)
+          .eq('business_id', bu.business_id)
+          .single()
+        if (!parentContact) {
+          return NextResponse.json({ error: 'איש קשר מקושר לא נמצא' }, { status: 400 })
+        }
+        // Prevent circular link (A→B→A)
+        if (parentContact.linked_to === contactId) {
+          return NextResponse.json({ error: 'לא ניתן ליצור קישור מעגלי' }, { status: 400 })
+        }
+        updateData.linked_to = linked_to
+      }
+    }
 
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json({ error: 'לא סופקו שדות לעדכון' }, { status: 400 })

@@ -12,6 +12,8 @@ export interface CreateContactData {
   tags?: string[]
   notes?: string
   birthday?: string
+  linkedTo?: string
+  relationship?: string
 }
 
 interface Contact {
@@ -28,6 +30,9 @@ interface Contact {
   total_visits: number
   total_revenue: number
   created_at: string
+  gender: string | null
+  linked_to: string | null
+  relationship: string | null
 }
 
 type ContactStatus = 'new' | 'returning' | 'vip' | 'dormant'
@@ -56,6 +61,8 @@ export async function createContact(
       notes: data.notes ?? null,
       birthday: data.birthday ?? null,
       status: 'new',
+      linked_to: data.linkedTo ?? null,
+      relationship: data.relationship ?? null,
     })
     .select()
     .single()
