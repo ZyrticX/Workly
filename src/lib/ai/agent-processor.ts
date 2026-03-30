@@ -737,13 +737,25 @@ ${stateResult.aiInstruction}
       // Use customer-facing message from ActionError if available
       if (err instanceof ActionError) {
         parsed.text = err.customerMessage
-        // Return to collecting_time for time conflicts
+        // Return to collecting_time for time conflicts — but ONLY if state machine
+        // was managing the booking. If action came from free-response tool call,
+        // reset to idle to prevent zombie state.
         if (errMsg.includes('TIME_SLOT_CONFLICT')) {
-          await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
+          const wasStateMachineBooking = stateResult.aiInstruction && stateResult.action
+          if (wasStateMachineBooking) {
+            await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
+          } else {
+            await saveBookingState(input.conversationId, { step: 'idle' })
+          }
         }
       } else if (errMsg.includes('TIME_SLOT_CONFLICT')) {
         parsed.text = ERROR_MESSAGES.TIME_SLOT_CONFLICT
-        await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
+        const wasStateMachineBooking = stateResult.aiInstruction && stateResult.action
+        if (wasStateMachineBooking) {
+          await saveBookingState(input.conversationId, { ...stateResult.newState, step: 'collecting_time' as const })
+        } else {
+          await saveBookingState(input.conversationId, { step: 'idle' })
+        }
       } else {
         if (parsed.text === '__BOOKING_PENDING__') {
           parsed.text = ERROR_MESSAGES.DB_INSERT_ERROR
