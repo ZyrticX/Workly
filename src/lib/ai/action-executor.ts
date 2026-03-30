@@ -322,6 +322,14 @@ export async function executeAction(
 
           // RPC already updates contact stats (total_visits + total_revenue)
 
+          // Update contact status (new → returning → vip)
+          try {
+            const { updateContactStatus } = await import('@/lib/data/contacts-mutations')
+            await updateContactStatus(bookingContactId)
+          } catch (statusErr) {
+            console.error('[action-executor] Failed to update contact status:', statusErr)
+          }
+
           // Send notification
           await supabase.from('notifications').insert({
             business_id: input.businessId,

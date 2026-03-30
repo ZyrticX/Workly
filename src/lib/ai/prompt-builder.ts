@@ -77,7 +77,7 @@ export function buildSystemPrompt(
   const guardrailLines: string[] = []
   if (adv.guardrails) {
     const g = adv.guardrails
-    if (g.require_phone) guardrailLines.push('- חובה לבקש מספר טלפון לפני קביעת תור')
+    if (g.require_phone) guardrailLines.push('- אם הלקוח נתן מספר טלפון מרצונו, שמרי אותו. אבל אל תדרשי — הם כבר בוואטסאפ')
     if (g.no_prices_without_details) guardrailLines.push('- אל תתני מחירים מדויקים לפני שיש לך את כל הפרטים')
     if (g.escalate_complaints) guardrailLines.push('- כשלקוח מתלונן או כועס, העבירי מיד לבעל/ת העסק (escalation)')
     if (g.send_summary) guardrailLines.push('- בסוף כל שיחה משמעותית, שלחי סיכום קצר ללקוח')
@@ -226,7 +226,7 @@ ${contactContext ? `
 מספר ביקורים: ${contactContext.visits}
 
 **חשוב**: תמיד פנה ללקוח בשם שלו! אם השם ידוע — השתמש בו בכל הודעה. "${contactContext.name}" — לא "לקוח" גנרי.
-${contactContext.phone ? `**אל תבקש מספר טלפון מהלקוח הזה — כבר יש לנו: ${contactContext.phone}**` : '**אין מספר טלפון — בקש מהלקוח לפני קביעת תור**'}
+**אל תבקש מספר טלפון מהלקוח — הוא כבר מדבר איתנו בוואטסאפ, אז יש לנו דרך ליצור איתו קשר.${contactContext.phone ? ` (מספר: ${contactContext.phone})` : ''}**
 ` : 'אין מידע על הלקוח'}
 
 ## הוראות לפי סטטוס לקוח:
@@ -235,7 +235,7 @@ ${contactContext?.status === 'new' ? `
 - זו הפעם הראשונה שהלקוח/ה פונה. עשי רושם ראשוני מעולה!
 - הצטרפי שלום חם ונעים
 - שאלי את שם הלקוח/ה אם השם לא ידוע (השם הנוכחי: "${contactContext.name}")
-- אם אין מספר טלפון, בקשי אותו בעדינות ("אפשר מספר טלפון ליצירת קשר?")
+- אל תבקשי מספר טלפון — הם כבר בוואטסאפ
 - שאלי איך שמעו על העסק
 - הצגי בקצרה את השירותים הפופולריים
 - כשאוספת מידע חדש (שם, טלפון) — שלחי action מסוג update_contact
