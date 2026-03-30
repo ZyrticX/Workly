@@ -550,7 +550,7 @@ ${stateResult.aiInstruction}
       intent: extracted.intent || 'other',
       confidence: 0.5,
       action: stateResult.action,
-      escalated: extracted.intent === 'other' && cleanText.includes('מעביר'),
+      escalated: extracted.intent === 'other' && (cleanText.includes('מעביר') || cleanText.includes('אעביר') || cleanText.includes('יצור איתך קשר')),
     }
   }
 
@@ -629,6 +629,16 @@ ${stateResult.aiInstruction}
     }
   } else if (parsed.text === '__BOOKING_PENDING__') {
     parsed.text = 'סליחה, משהו השתבש. נסה שוב בבקשה.'
+  }
+
+  // 6b. Safety net: AI said "מעביר" but didn't send escalate action → force escalation
+  if (parsed.escalated && parsed.action?.type !== 'escalate') {
+    try {
+      await executeAction({ type: 'escalate', params: {} }, input, settingsResult.data)
+      console.log('[agent] Auto-escalated: AI said "מעביר" without escalate action')
+    } catch (escErr) {
+      console.error('[agent] Auto-escalation failed:', escErr)
+    }
   }
 
   // 7. Safety net: AI said "booked" but didn't send action → AUTO-FIX
