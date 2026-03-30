@@ -56,6 +56,8 @@ function transliterateToHebrew(name: string): string {
 // ── Conversation-level mutex to prevent double responses ──
 // Key: conversationId, Value: timestamp when lock was acquired
 const conversationLocks = new Map<string, number>()
+// Track messages that arrived while conversation was locked
+const pendingMessages = new Map<string, { businessId: string; contactId: string; contactName: string; contactStatus: string; contactPhone: string; chatId: string; sessionId: string }>()
 const LOCK_TTL_MS = 30_000 // 30s max lock duration (safety valve)
 
 function acquireLock(conversationId: string): boolean {
@@ -365,7 +367,17 @@ export async function POST(req: NextRequest) {
 
         // ── Mutex: prevent double responses from simultaneous webhooks ──
         if (!acquireLock(convId)) {
-          console.warn(`[webhook] Conversation ${convId} is already being processed, skipping duplicate`)
+          // Message already saved to DB above — mark as pending so we process it after current request finishes
+          pendingMessages.set(convId, {
+            businessId: phone.business_id,
+            contactId: contact!.id,
+            contactName: contact!.name || from,
+            contactStatus: contact!.status || 'new',
+            contactPhone: contact!.phone || '',
+            chatId,
+            sessionId: phone.session_id!,
+          })
+          console.log(`[webhook] Conversation ${convId} is busy — message saved, will process after current finishes`)
           return NextResponse.json({ ok: true })
         }
 
@@ -488,6 +500,61 @@ export async function POST(req: NextRequest) {
           await incrementErrorCounter(supabase, convId, phone.business_id)
         } finally {
           releaseLock(convId)
+
+          // Check if new messages arrived while we were processing
+          const pending = pendingMessages.get(convId)
+          if (pending) {
+            pendingMessages.delete(convId)
+            // Re-acquire lock and process the latest unread message
+            if (acquireLock(convId)) {
+              try {
+                // Get the latest inbound message that has no AI response after it
+                const { data: latestMsg } = await supabase
+                  .from('messages')
+                  .select('content')
+                  .eq('conversation_id', convId)
+                  .eq('direction', 'inbound')
+                  .order('created_at', { ascending: false })
+                  .limit(1)
+                  .single()
+
+                if (latestMsg?.content) {
+                  console.log(`[webhook] Processing pending message for ${convId}: "${latestMsg.content.slice(0, 50)}"`)
+                  const pendingResponse = await processAIAgent({
+                    businessId: pending.businessId,
+                    conversationId: convId,
+                    contactId: pending.contactId,
+                    message: latestMsg.content,
+                    contactName: pending.contactName,
+                    contactStatus: pending.contactStatus,
+                    contactPhone: pending.contactPhone,
+                  })
+
+                  if (pendingResponse?.text) {
+                    try {
+                      await whatsapp.sendMessage(pending.sessionId, pending.chatId, pendingResponse.text)
+                    } catch (sendErr) {
+                      console.error('[webhook] Failed to send pending response:', sendErr)
+                    }
+
+                    await supabase.from('messages').insert({
+                      business_id: pending.businessId,
+                      conversation_id: convId,
+                      direction: 'outbound',
+                      sender_type: 'ai',
+                      type: 'text',
+                      content: pendingResponse.text,
+                      status: 'sent',
+                    })
+                  }
+                }
+              } catch (pendingErr) {
+                console.error('[webhook] Failed to process pending message:', pendingErr)
+              } finally {
+                releaseLock(convId)
+              }
+            }
+          }
         }
       }
 
