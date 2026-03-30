@@ -73,6 +73,16 @@ export async function executeAction(
           throw new ActionError('INVALID_DATE: ' + params.date, 'התאריך לא תקין. איזה תאריך מתאים לך?')
         }
 
+        // Reject booking in the past
+        const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+        const bookingDateTime = new Date(`${params.date}T${params.time}:00`)
+        if (bookingDateTime < israelNow) {
+          throw new ActionError(
+            `PAST_TIME: ${params.date} ${params.time} is in the past (now: ${israelNow.toISOString()})`,
+            `השעה ${params.time} כבר עברה. מה לגבי שעה מאוחרת יותר?`
+          )
+        }
+
         // Cross-check: look for the requested time in recent conversation
         // to catch AI sending wrong time
         const { data: recentMsgs } = await supabase
