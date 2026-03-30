@@ -123,7 +123,7 @@ export function buildSystemPrompt(
       if (h >= 18) break
       slots.push(`${String(h).padStart(2, '0')}:${String(mm).padStart(2, '0')}`)
     }
-    return `${s.name} (${s.duration} דק'): ${slots.slice(0, 8).join(', ')}...`
+    return `${s.name} (${s.duration} דק'): ${slots.join(', ')}`
   }).join('\n')
 
   // Build business-specific personality based on business_type
