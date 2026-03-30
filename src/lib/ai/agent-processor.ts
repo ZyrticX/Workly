@@ -1,4 +1,5 @@
-import { generateResponse } from '@/lib/ai/ai-client'
+import { generateResponse, generateResponseWithTools } from '@/lib/ai/ai-client'
+import type { ToolCall } from '@/lib/ai/ai-client'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { AgentInput, AgentResponse, ParsedAIResponse, AdvancedAIConfig } from './types'
 import { buildSystemPrompt } from './prompt-builder'
@@ -32,6 +33,18 @@ function cleanAIResponse(raw: string): string {
   text = text.replace(/\n{3,}/g, '\n\n').trim()
 
   return text || raw.trim()
+}
+
+// ── Convert tool call to action ──
+
+function toolCallToAction(tc: ToolCall): { type: string; params: Record<string, unknown> } | null {
+  try {
+    const params = JSON.parse(tc.function.arguments || '{}')
+    return { type: tc.function.name, params }
+  } catch {
+    console.warn(`[agent] Failed to parse tool call arguments: ${tc.function.arguments}`)
+    return null
+  }
 }
 
 // ── Main Agent Processor ────────────────────────────────
@@ -519,7 +532,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
       escalated: false,
     }
   } else if (stateResult.aiInstruction) {
-    // State machine gave instructions - AI generates natural response
+    // State machine gave instructions - AI generates natural response with tool calling
     const guidedPrompt = `${baseSystemPrompt}
 
 ## הנחיה נוכחית (חובה לבצע):
@@ -532,46 +545,61 @@ ${stateResult.aiInstruction}
 - אל תחזור על מידע שכבר נאמר בשיחה.
 - אם הלקוח חוזר, הראה שאתה זוכר אותו.
 - ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.
-- **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ. לעולם אל תגיד "אפשר מספר טלפון", "תן מספר", "מספר ליצירת קשר" או כל וריאציה.**`
+- **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
+- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים) — השתמש ב-tools שזמינים לך. אל תכתוב JSON בגוף ההודעה.`
 
-    const aiResponse = await generateResponse(
+    const toolResponse = await generateResponseWithTools(
       guidedPrompt,
       conversationHistory.slice(-8),
       input.message
     )
 
-    const cleanText = cleanAIResponse(aiResponse)
+    const cleanText = cleanAIResponse(toolResponse.text || '')
+
+    // Merge: state machine action takes priority, then tool calls
+    let action = stateResult.action
+    if (!action && toolResponse.toolCalls.length > 0) {
+      action = toolCallToAction(toolResponse.toolCalls[0])
+    }
 
     parsed = {
       text: cleanText,
       intent: extracted.intent || 'other',
       confidence: 0.9,
-      action: stateResult.action,
+      action,
       escalated: false,
     }
   } else {
-    // No state machine instruction - free AI response
+    // No state machine instruction - free AI response with tool calling
     const freePrompt = `${baseSystemPrompt}
 
-ענה בעברית טבעית, חמה, כאילו אתה חבר. 1-3 משפטים. בלי JSON.
+ענה בעברית טבעית, חמה, כאילו אתה חבר. 1-3 משפטים.
 אם הלקוח שואל שאלה שאתה לא יודע - אמור שתבדוק ותחזור אליו.
-אם הלקוח רוצה לדבר עם בן אדם - אמור שאתה מעביר לבעל העסק.
-**אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**`
+אם הלקוח רוצה לדבר עם בן אדם - השתמש ב-tool escalate.
+**אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
+- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים, העברה לבעל העסק) — השתמש ב-tools שזמינים לך. אל תכתוב JSON.`
 
-    const aiResponse = await generateResponse(
+    const toolResponse = await generateResponseWithTools(
       freePrompt,
       conversationHistory,
       input.message
     )
 
-    const cleanText = cleanAIResponse(aiResponse)
+    const cleanText = cleanAIResponse(toolResponse.text || '')
+
+    // In free mode, tool calls are the ONLY source of actions
+    let action = stateResult.action
+    if (!action && toolResponse.toolCalls.length > 0) {
+      action = toolCallToAction(toolResponse.toolCalls[0])
+    }
 
     parsed = {
       text: cleanText,
       intent: extracted.intent || 'other',
       confidence: 0.5,
-      action: stateResult.action,
-      escalated: extracted.intent === 'other' && (cleanText.includes('מעביר') || cleanText.includes('אעביר') || cleanText.includes('יצור איתך קשר')),
+      action,
+      escalated: toolResponse.toolCalls.some(tc => tc.function.name === 'escalate')
+        || (cleanText.includes('מעביר') || cleanText.includes('אעביר') || cleanText.includes('יצור איתך קשר')),
     }
   }
 
