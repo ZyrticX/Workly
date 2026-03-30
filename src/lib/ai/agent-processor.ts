@@ -47,6 +47,26 @@ function toolCallToAction(tc: ToolCall): { type: string; params: Record<string, 
   }
 }
 
+// ── Fallback text when model returns tool_calls without content ──
+
+function generateFallbackText(actionType: string, contactName: string): string {
+  const name = contactName || ''
+  switch (actionType) {
+    case 'book_appointment':
+      return `שנייה ${name}, מסדר לך את התור... 📋`
+    case 'cancel_appointment':
+      return `מבטל את התור ${name ? `שלך ${name}` : ''}...`
+    case 'reschedule_appointment':
+      return `מזיז את התור ${name ? `שלך ${name}` : ''}...`
+    case 'escalate':
+      return `שנייה, מעביר אותך לצוות 🙏`
+    case 'update_contact':
+      return '' // Silent — no need to message customer for contact updates
+    default:
+      return `שנייה ${name}, בודק... 🔍`
+  }
+}
+
 // ── Main Agent Processor ────────────────────────────────
 
 export async function processAIAgent(
@@ -518,7 +538,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
     promptContactCtx,
     aiAdvanced
   ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" — הצג את כל התורים מהרשימה למעלה. אם יש תורים שקבע לאחרים, אמור "וגם קבעת תור ל[שם] ב-[שעה]".`
-  + (contactNameIsPlaceholder ? `\n\n## חשוב — השם של הלקוח לא ידוע!\nהשם שיש לנו הוא מזהה זמני בלבד. **אל תקרא ללקוח "${contactCtx.name}"!** פנה אליו בצורה ידידותית בלי שם (למשל "היי!" או "אהלן!"). ברגע הראשון הנוח — שאל "איך קוראים לך?" ושלח action update_contact עם השם שהוא נותן.` : '')
+  + (contactNameIsPlaceholder ? `\n\n## חשוב — השם של הלקוח לא ידוע!\nהשם שיש לנו הוא מזהה זמני בלבד. **אל תקרא ללקוח "${contactCtx.name}"!** פנה אליו בצורה ידידותית בלי שם (למשל "היי!" או "אהלן!"). ברגע הראשון הנוח — שאל "איך קוראים לך?" והשתמש ב-tool update_contact עם השם שהוא נותן.` : '')
 
   let parsed: ParsedAIResponse
 
@@ -546,7 +566,8 @@ ${stateResult.aiInstruction}
 - אם הלקוח חוזר, הראה שאתה זוכר אותו.
 - ענה בטקסט רגיל, בלי JSON, בלי פורמט מיוחד.
 - **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
-- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים) — השתמש ב-tools שזמינים לך. אל תכתוב JSON בגוף ההודעה.`
+- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים) — השתמש ב-tools שזמינים לך. אל תכתוב JSON בגוף ההודעה.
+- **חובה**: תמיד כתוב הודעה ללקוח בנוסף לשימוש ב-tool! אל תשלח tool בלי טקסט.`
 
     const toolResponse = await generateResponseWithTools(
       guidedPrompt,
@@ -554,12 +575,37 @@ ${stateResult.aiInstruction}
       input.message
     )
 
-    const cleanText = cleanAIResponse(toolResponse.text || '')
+    let cleanText = cleanAIResponse(toolResponse.text || '')
 
     // Merge: state machine action takes priority, then tool calls
     let action = stateResult.action
-    if (!action && toolResponse.toolCalls.length > 0) {
-      action = toolCallToAction(toolResponse.toolCalls[0])
+    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+
+    // Process multiple tool calls: primary action + side effects (like update_contact)
+    let sideEffectAction: { type: string; params: Record<string, unknown> } | null = null
+    for (const tc of allToolActions) {
+      if (!action && (tc.type === 'book_appointment' || tc.type === 'cancel_appointment' || tc.type === 'reschedule_appointment' || tc.type === 'escalate')) {
+        action = tc
+      } else if (tc.type === 'update_contact') {
+        sideEffectAction = tc
+      } else if (!action) {
+        action = tc
+      }
+    }
+
+    // Execute side-effect tool calls immediately (e.g., update_contact alongside a booking)
+    if (sideEffectAction) {
+      try {
+        await executeAction(sideEffectAction, input, settingsResult.data)
+        console.log(`[agent] Side-effect tool call executed: ${sideEffectAction.type}`)
+      } catch (sideErr) {
+        console.warn(`[agent] Side-effect tool call failed (non-critical): ${sideErr}`)
+      }
+    }
+
+    // If model returned tool calls but no text, generate fallback text
+    if (!cleanText && action) {
+      cleanText = generateFallbackText(action.type, contactCtx.name)
     }
 
     parsed = {
@@ -577,7 +623,8 @@ ${stateResult.aiInstruction}
 אם הלקוח שואל שאלה שאתה לא יודע - אמור שתבדוק ותחזור אליו.
 אם הלקוח רוצה לדבר עם בן אדם - השתמש ב-tool escalate.
 **אסור לבקש מספר טלפון! הלקוח כבר בוואטסאפ.**
-- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים, העברה לבעל העסק) — השתמש ב-tools שזמינים לך. אל תכתוב JSON.`
+- אם צריך לבצע פעולה (קביעת תור, ביטול, עדכון פרטים, העברה לבעל העסק) — השתמש ב-tools שזמינים לך. אל תכתוב JSON.
+- **חובה**: תמיד כתוב הודעה ללקוח בנוסף לשימוש ב-tool! אל תשלח tool בלי טקסט.`
 
     const toolResponse = await generateResponseWithTools(
       freePrompt,
@@ -585,12 +632,36 @@ ${stateResult.aiInstruction}
       input.message
     )
 
-    const cleanText = cleanAIResponse(toolResponse.text || '')
+    let cleanText = cleanAIResponse(toolResponse.text || '')
 
-    // In free mode, tool calls are the ONLY source of actions
+    // Process multiple tool calls
     let action = stateResult.action
-    if (!action && toolResponse.toolCalls.length > 0) {
-      action = toolCallToAction(toolResponse.toolCalls[0])
+    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+
+    let sideEffectAction: { type: string; params: Record<string, unknown> } | null = null
+    for (const tc of allToolActions) {
+      if (!action && (tc.type === 'book_appointment' || tc.type === 'cancel_appointment' || tc.type === 'reschedule_appointment' || tc.type === 'escalate')) {
+        action = tc
+      } else if (tc.type === 'update_contact') {
+        sideEffectAction = tc
+      } else if (!action) {
+        action = tc
+      }
+    }
+
+    // Execute side-effect tool calls immediately
+    if (sideEffectAction) {
+      try {
+        await executeAction(sideEffectAction, input, settingsResult.data)
+        console.log(`[agent] Side-effect tool call executed: ${sideEffectAction.type}`)
+      } catch (sideErr) {
+        console.warn(`[agent] Side-effect tool call failed (non-critical): ${sideErr}`)
+      }
+    }
+
+    // If model returned tool calls but no text, generate fallback text
+    if (!cleanText && action) {
+      cleanText = generateFallbackText(action.type, contactCtx.name)
     }
 
     parsed = {
@@ -598,7 +669,7 @@ ${stateResult.aiInstruction}
       intent: extracted.intent || 'other',
       confidence: 0.5,
       action,
-      escalated: toolResponse.toolCalls.some(tc => tc.function.name === 'escalate')
+      escalated: allToolActions.some(tc => tc.type === 'escalate')
         || (cleanText.includes('מעביר') || cleanText.includes('אעביר') || cleanText.includes('יצור איתך קשר')),
     }
   }

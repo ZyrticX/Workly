@@ -1,4 +1,3 @@
-import { generateResponse } from '@/lib/ai/ai-client'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { AgentInput } from './types'
 import { ERROR_MESSAGES } from './error-messages'
