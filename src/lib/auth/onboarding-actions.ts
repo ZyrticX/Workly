@@ -26,7 +26,6 @@ export async function updateOnboardingStep(
         ...existingStepsData,
         [`step_${step}`]: stepData,
       },
-      ...(step >= 9 ? { completed_at: new Date().toISOString(), is_completed: true } : {}),
     })
     .eq('business_id', businessId)
 

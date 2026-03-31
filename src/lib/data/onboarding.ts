@@ -14,9 +14,6 @@ interface OnboardingProgress {
   created_at: string
 }
 
-// Total number of onboarding steps (completion triggers at this step)
-const TOTAL_STEPS = 9
-
 // ──────────────────────────────────────────────
 // Main
 // ──────────────────────────────────────────────
@@ -61,17 +58,12 @@ export async function updateOnboardingStep(
     [`step_${step}`]: stepData,
   }
 
-  const isCompleted = step >= TOTAL_STEPS
-
   // 3. Update progress record
   const { data: updated, error: updateError } = await supabase
     .from('onboarding_progress')
     .update({
       current_step: step + 1,
       steps_data: updatedStepsData,
-      ...(isCompleted
-        ? { is_completed: true, completed_at: new Date().toISOString() }
-        : {}),
     })
     .eq('business_id', businessId)
     .select()

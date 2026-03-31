@@ -56,7 +56,7 @@ export async function updateSession(request: NextRequest) {
     try {
       const { data: bu } = await supabase
         .from('business_users')
-        .select('business_id')
+        .select('business_id, businesses(status)')
         .eq('user_id', user.id)
         .single()
 
@@ -72,14 +72,16 @@ export async function updateSession(request: NextRequest) {
         return NextResponse.redirect(url)
       }
 
+      const bizStatus = (bu as Record<string, unknown>).businesses as { status: string } | null
+
       const { data: onboarding } = await supabase
         .from('onboarding_progress')
         .select('is_completed')
         .eq('business_id', bu.business_id)
         .single()
 
-      // No onboarding record OR not completed → send to onboarding
-      if (!onboarding || !onboarding.is_completed) {
+      // No onboarding record OR not completed OR business still in onboarding status → send to onboarding
+      if (!onboarding || !onboarding.is_completed || bizStatus?.status === 'onboarding') {
         const url = request.nextUrl.clone()
         url.pathname = '/onboarding'
         return NextResponse.redirect(url)
