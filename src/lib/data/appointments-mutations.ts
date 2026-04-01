@@ -153,10 +153,16 @@ export async function cancelAppointment(
     })
 
     for (const entry of waitlisted) {
-      // Mark as offered
+      // Mark as offered with slot details for auto-booking
       await supabase
         .from('waitlist')
-        .update({ status: 'offered' })
+        .update({
+          status: 'offered',
+          offered_appointment_time: appointment.start_time,
+          offered_at: new Date().toISOString(),
+          offered_service_type: appointment.service_type,
+          offered_duration_minutes: appointment.duration_minutes,
+        })
         .eq('id', entry.id)
 
       // Send WhatsApp notification to waitlisted contact

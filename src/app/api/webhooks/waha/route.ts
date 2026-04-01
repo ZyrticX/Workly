@@ -56,6 +56,7 @@ function transliterateToHebrew(name: string): string {
 // ── Conversation-level mutex (Redis-backed) to prevent double responses ──
 import { getRedis } from '@/lib/cache/redis'
 import { checkInput, checkRateLimit, stripPII } from '@/lib/ai/guards'
+import { handleWaitlistReply } from '@/lib/data/waitlist-handler'
 
 interface PendingMessage {
   businessId: string
@@ -417,6 +418,23 @@ export async function POST(req: NextRequest) {
           const rateResult = await checkRateLimit(contact!.id)
           if (!rateResult.allowed) {
             await whatsapp.sendMessage(phone.session_id!, chatId, rateResult.message!)
+            await releaseLock(convId)
+            return NextResponse.json({ ok: true })
+          }
+
+          // ── Waitlist: check if this is a reply to a slot offer ──
+          const waitlistResult = await handleWaitlistReply(contact!.id, phone.business_id, messageContent)
+          if (waitlistResult.handled && waitlistResult.responseMessage) {
+            await whatsapp.sendMessage(phone.session_id!, chatId, waitlistResult.responseMessage)
+            await supabase.from('messages').insert({
+              business_id: phone.business_id,
+              conversation_id: convId,
+              direction: 'outbound',
+              sender_type: 'ai',
+              type: 'text',
+              content: waitlistResult.responseMessage,
+              status: 'sent',
+            })
             await releaseLock(convId)
             return NextResponse.json({ ok: true })
           }

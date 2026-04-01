@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { getIsraelNow, formatIsraelSQL } from '@/lib/utils/timezone'
+import { expireStaleOffers } from '@/lib/data/waitlist-handler'
 
 // ── Appointment Reminders Cron ──────────────────
 // Sends WhatsApp reminders 1 hour before appointments.
@@ -79,7 +80,24 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ sent: sentCount })
+    // ── Waitlist: expire stale offers and cascade to next in queue ──
+    let waitlistExpired = 0
+    try {
+      // Get distinct business IDs from any offered waitlist entries
+      const { data: offeredBusinesses } = await supabase
+        .from('waitlist')
+        .select('business_id')
+        .eq('status', 'offered')
+
+      const uniqueBusinessIds = [...new Set((offeredBusinesses || []).map(w => w.business_id))]
+      for (const bid of uniqueBusinessIds) {
+        waitlistExpired += await expireStaleOffers(bid)
+      }
+    } catch (wlErr) {
+      console.error('[reminders] Waitlist expiry error:', wlErr)
+    }
+
+    return NextResponse.json({ sent: sentCount, waitlistExpired })
   } catch (err) {
     console.error('[reminders] Error:', err)
     return NextResponse.json({ error: 'Failed' }, { status: 500 })
