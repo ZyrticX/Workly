@@ -55,6 +55,7 @@ function transliterateToHebrew(name: string): string {
 
 // ── Conversation-level mutex (Redis-backed) to prevent double responses ──
 import { getRedis } from '@/lib/cache/redis'
+import { checkInput, checkRateLimit, stripPII } from '@/lib/ai/guards'
 
 interface PendingMessage {
   businessId: string
@@ -412,23 +413,37 @@ export async function POST(req: NextRequest) {
         }
 
         try {
+          // ── Guards: rate limit + input check ──
+          const rateResult = await checkRateLimit(contact!.id)
+          if (!rateResult.allowed) {
+            await whatsapp.sendMessage(phone.session_id!, chatId, rateResult.message!)
+            await releaseLock(convId)
+            return NextResponse.json({ ok: true })
+          }
+
+          const inputCheck = checkInput(messageContent)
+          if (inputCheck.flagged) {
+            console.warn(`[webhook] Prompt injection blocked from ${contact?.name || from}`)
+          }
+
           const aiResponse = await processAIAgent({
             businessId: phone.business_id,
             conversationId: convId,
             contactId: contact!.id,
-            message: messageContent,
+            message: inputCheck.flagged ? 'שלום' : messageContent,
             contactName: contact!.name || from,
             contactStatus: contact!.status || 'new',
             contactPhone: contact!.phone || '',
           })
 
           if (aiResponse && aiResponse.text) {
+            const safeText = stripPII(aiResponse.text)
             // Send response via WAHA - use chatId (with @c.us or @lid suffix)
             try {
               await whatsapp.sendMessage(
                 phone.session_id!,
                 chatId,
-                aiResponse.text
+                safeText
               )
             } catch (sendError) {
               // WAHA sendMessage failed — save message as 'failed', notify owner
@@ -447,7 +462,7 @@ export async function POST(req: NextRequest) {
                 direction: 'outbound',
                 sender_type: 'ai',
                 type: 'text',
-                content: aiResponse.text,
+                content: safeText,
                 status: 'failed',
               })
 
@@ -474,7 +489,7 @@ export async function POST(req: NextRequest) {
               direction: 'outbound',
               sender_type: 'ai',
               type: 'text',
-              content: aiResponse.text,
+              content: safeText,
               status: 'sent',
             })
 
@@ -483,7 +498,7 @@ export async function POST(req: NextRequest) {
               business_id: phone.business_id,
               conversation_id: convId,
               detected_intent: aiResponse.intent,
-              ai_response: aiResponse.text,
+              ai_response: safeText,
               confidence: aiResponse.confidence,
               escalated: aiResponse.escalated,
             })
@@ -560,8 +575,9 @@ export async function POST(req: NextRequest) {
                   })
 
                   if (pendingResponse?.text) {
+                    const safePendingText = stripPII(pendingResponse.text)
                     try {
-                      await whatsapp.sendMessage(pending.sessionId, pending.chatId, pendingResponse.text)
+                      await whatsapp.sendMessage(pending.sessionId, pending.chatId, safePendingText)
                     } catch (sendErr) {
                       console.error('[webhook] Failed to send pending response:', sendErr)
                     }
@@ -572,7 +588,7 @@ export async function POST(req: NextRequest) {
                       direction: 'outbound',
                       sender_type: 'ai',
                       type: 'text',
-                      content: pendingResponse.text,
+                      content: safePendingText,
                       status: 'sent',
                     })
                   }
