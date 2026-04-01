@@ -1,5 +1,5 @@
 import { generateResponseWithTools } from '@/lib/ai/ai-client'
-import type { ToolCall } from '@/lib/ai/ai-client'
+import type { ToolCallResult } from '@/lib/ai/ai-client'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { AgentInput, AgentResponse, ParsedAIResponse, AdvancedAIConfig } from './types'
 import { buildSystemPrompt } from './prompt-builder'
@@ -37,16 +37,10 @@ function cleanAIResponse(raw: string): string {
   return text || raw.trim()
 }
 
-// ── Convert tool call to action ──
+// ── Convert SDK tool call to action ──
 
-function toolCallToAction(tc: ToolCall): { type: string; params: Record<string, unknown> } | null {
-  try {
-    const params = JSON.parse(tc.function.arguments || '{}')
-    return { type: tc.function.name, params }
-  } catch {
-    console.warn(`[agent] Failed to parse tool call arguments: ${tc.function.arguments}`)
-    return null
-  }
+function toolCallToAction(tc: ToolCallResult): { type: string; params: Record<string, unknown> } {
+  return { type: tc.toolName, params: tc.args }
 }
 
 // ── Fallback text when model returns tool_calls without content ──
@@ -335,7 +329,7 @@ ${stateResult.aiInstruction}
     const action = stateResult.action
 
     // Process AI tool calls: only update_contact and escalate are allowed
-    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc))
     let escalated = false
 
     for (const tc of allToolActions) {
@@ -388,7 +382,7 @@ ${stateResult.aiInstruction}
     const action = stateResult.action
 
     // Process AI tool calls: only update_contact and escalate are allowed
-    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc)).filter(Boolean) as Array<{ type: string; params: Record<string, unknown> }>
+    const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc))
     let escalated = false
 
     for (const tc of allToolActions) {

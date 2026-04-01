@@ -1,15 +1,16 @@
 /**
- * AI Client — Uses OpenRouter API (OpenAI-compatible)
+ * AI Client — Uses Vercel AI SDK with OpenRouter provider
  * Supports any model available on OpenRouter (Claude, GPT, Gemini, etc.)
  */
 
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
-const AI_MODEL = process.env.AI_MODEL || 'openai/gpt-4.1-mini'
+import { generateText, tool } from 'ai'
+import { openrouter } from '@openrouter/ai-sdk-provider'
+import { z } from 'zod'
+
+const AI_MODEL = process.env.AI_MODEL || 'google/gemini-2.5-flash'
 
 // ── Circuit Breaker ─────────────────────────────────
-// Tracks consecutive failures to OpenRouter and short-circuits
-// when the service appears unhealthy, avoiding cascading timeouts.
+// Tracks consecutive failures and short-circuits when unhealthy.
 
 let consecutiveFailures = 0
 let circuitOpenUntil = 0
@@ -51,18 +52,31 @@ export interface GenerateOptions {
   temperature?: number
 }
 
-type VisionContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
+// Tool call types (used by agent-processor)
+export interface ToolCallResult {
+  toolName: string
+  args: Record<string, unknown>
+}
+
+export interface ToolResponse {
+  text: string | null
+  toolCalls: ToolCallResult[]
+}
+
+// ── Helper: Convert conversation entries to SDK messages ──
+
+function toSDKMessages(history: ConversationEntry[]) {
+  return history.map((entry) => ({
+    role: (entry.role === 'model' ? 'assistant' : entry.role) as 'user' | 'assistant',
+    content: entry.text,
+  }))
+}
 
 // ── API Functions ───────────────────────────────────
 
 /**
- * Generate a response using OpenRouter API.
- * Compatible with any model on OpenRouter.
- *
- * Includes a circuit breaker: after 5 consecutive failures the circuit
- * opens for 60 seconds and returns a Hebrew fallback message immediately.
+ * Generate a text response (no tools).
+ * Used for data extraction, BI chat, insights, etc.
  */
 export async function generateResponse(
   systemPrompt: string,
@@ -70,7 +84,6 @@ export async function generateResponse(
   userMessage: string,
   options?: GenerateOptions
 ): Promise<string> {
-  // Circuit breaker check
   const state = getCircuitState()
   if (state === 'OPEN') {
     console.warn('[AI Circuit Breaker] Circuit is OPEN — returning fallback')
@@ -80,92 +93,42 @@ export async function generateResponse(
     console.info('[AI Circuit Breaker] Circuit is HALF_OPEN — attempting single request')
   }
 
-  const messages = [
-    { role: 'system' as const, content: systemPrompt },
-    ...conversationHistory.map((entry) => ({
-      role: (entry.role === 'model' ? 'assistant' : entry.role) as 'user' | 'assistant',
-      content: entry.text,
-    })),
-    { role: 'user' as const, content: userMessage },
-  ]
-
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://auto-crm.org',
-        'X-Title': 'WhatsApp AI Agent Platform',
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages,
-        temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 1024,
-      }),
+    const { text } = await generateText({
+      model: openrouter(AI_MODEL),
+      system: systemPrompt,
+      messages: [
+        ...toSDKMessages(conversationHistory),
+        { role: 'user' as const, content: userMessage },
+      ],
+      maxOutputTokens: options?.maxTokens ?? 1024,
+      temperature: options?.temperature ?? 0.7,
     })
 
-    if (!res.ok) {
-      const error = await res.text()
-      console.error('[AI] OpenRouter error:', error)
-      onFailure()
-      const err = new Error(`AI request failed: ${res.status}`) as Error & { status: number }
-      err.status = res.status
-      throw err
-    }
-
-    const data = await res.json()
-    const content = data.choices?.[0]?.message?.content || ''
     onSuccess()
-    return content
+    return text
   } catch (err) {
     onFailure()
     throw err
   }
 }
 
-// ── Tool Definitions ────────────────────────────────
+// ── Tool Definitions (Zod schemas) ──────────────────
 
-export interface ToolCall {
-  id: string
-  type: 'function'
-  function: { name: string; arguments: string }
+const AGENT_TOOLS = {
+  update_contact: tool({
+    description: 'Update contact info when customer provides new details (name, gender). Do NOT ask for phone — they are already on WhatsApp.',
+    inputSchema: z.object({
+      name: z.string().optional().describe('Customer name'),
+      gender: z.enum(['male', 'female']).optional().describe('Detected gender from name or speech patterns'),
+      notes: z.string().optional().describe('Notes about the customer'),
+    }),
+  }),
+  escalate: tool({
+    description: 'Transfer conversation to the business owner. Use when customer asks to speak with a human, has complaints, or sensitive issues.',
+    inputSchema: z.object({}),
+  }),
 }
-
-export interface ToolResponse {
-  text: string | null
-  toolCalls: ToolCall[]
-}
-
-const AGENT_TOOLS = [
-  {
-    type: 'function' as const,
-    function: {
-      name: 'update_contact',
-      description: 'Update contact info when customer provides new details (name, gender). Do NOT ask for phone — they are already on WhatsApp.',
-      parameters: {
-        type: 'object',
-        properties: {
-          name: { type: 'string', description: 'Customer name' },
-          gender: { type: 'string', enum: ['male', 'female'], description: 'Detected gender from name or speech patterns' },
-          notes: { type: 'string', description: 'Notes about the customer' },
-        },
-      },
-    },
-  },
-  {
-    type: 'function' as const,
-    function: {
-      name: 'escalate',
-      description: 'Transfer conversation to the business owner. Use when customer asks to speak with a human, has complaints, or sensitive issues.',
-      parameters: {
-        type: 'object',
-        properties: {},
-      },
-    },
-  },
-]
 
 /**
  * Generate a response with tool calling support.
@@ -182,49 +145,30 @@ export async function generateResponseWithTools(
     return { text: FALLBACK_MESSAGE, toolCalls: [] }
   }
 
-  const messages = [
-    { role: 'system' as const, content: systemPrompt },
-    ...conversationHistory.map((entry) => ({
-      role: (entry.role === 'model' ? 'assistant' : entry.role) as 'user' | 'assistant',
-      content: entry.text,
-    })),
-    { role: 'user' as const, content: userMessage },
-  ]
-
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://auto-crm.org',
-        'X-Title': 'WhatsApp AI Agent Platform',
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages,
-        tools: AGENT_TOOLS,
-        temperature: options?.temperature ?? 0.7,
-        max_tokens: options?.maxTokens ?? 1024,
-      }),
+    const result = await generateText({
+      model: openrouter(AI_MODEL),
+      system: systemPrompt,
+      messages: [
+        ...toSDKMessages(conversationHistory),
+        { role: 'user' as const, content: userMessage },
+      ],
+      tools: AGENT_TOOLS,
+      maxOutputTokens: options?.maxTokens ?? 1024,
+      temperature: options?.temperature ?? 0.7,
     })
 
-    if (!res.ok) {
-      const error = await res.text()
-      console.error('[AI] OpenRouter error:', error)
-      onFailure()
-      const err = new Error(`AI request failed: ${res.status}`) as Error & { status: number }
-      err.status = res.status
-      throw err
-    }
-
-    const data = await res.json()
-    const message = data.choices?.[0]?.message
     onSuccess()
 
+    // Convert SDK tool calls to our format
+    const toolCalls: ToolCallResult[] = (result.toolCalls || []).map((tc) => ({
+      toolName: tc.toolName,
+      args: tc.input as Record<string, unknown>,
+    }))
+
     return {
-      text: message?.content || null,
-      toolCalls: (message?.tool_calls as ToolCall[]) || [],
+      text: result.text || null,
+      toolCalls,
     }
   } catch (err) {
     onFailure()
@@ -240,55 +184,39 @@ export async function generateVisionResponse(
   images: { base64: string; mimeType: string }[],
   userMessage: string
 ): Promise<string> {
-  // Circuit breaker check
   const state = getCircuitState()
   if (state === 'OPEN') {
     console.warn('[AI Circuit Breaker] Circuit is OPEN — returning fallback (vision)')
     return FALLBACK_MESSAGE
   }
 
-  const content: VisionContentPart[] = [{ type: 'text', text: userMessage }]
-
-  for (const img of images) {
-    content.push({
-      type: 'image_url',
-      image_url: {
-        url: `data:${img.mimeType};base64,${img.base64}`,
-      },
-    })
-  }
-
   try {
-    const res = await fetch(OPENROUTER_URL, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENROUTER_KEY}`,
-        'Content-Type': 'application/json',
-        'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://auto-crm.org',
-        'X-Title': 'WhatsApp AI Agent Platform',
-      },
-      body: JSON.stringify({
-        model: process.env.AI_VISION_MODEL || 'google/gemini-2.5-flash-preview',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content },
-        ],
-        temperature: 0.5,
-        max_tokens: 2048,
-      }),
+    const visionModel = process.env.AI_VISION_MODEL || 'google/gemini-2.5-flash-preview'
+
+    const imageParts = images.map((img) => ({
+      type: 'image' as const,
+      image: Buffer.from(img.base64, 'base64'),
+      mimeType: img.mimeType,
+    }))
+
+    const { text } = await generateText({
+      model: openrouter(visionModel),
+      system: systemPrompt,
+      messages: [
+        {
+          role: 'user' as const,
+          content: [
+            { type: 'text' as const, text: userMessage },
+            ...imageParts,
+          ],
+        },
+      ],
+      maxOutputTokens: 2048,
+      temperature: 0.5,
     })
 
-    if (!res.ok) {
-      const error = await res.text()
-      console.error('[AI Vision] OpenRouter error:', error)
-      onFailure()
-      throw new Error(`AI vision request failed: ${res.status}`)
-    }
-
-    const data = await res.json()
-    const result = data.choices?.[0]?.message?.content || ''
     onSuccess()
-    return result
+    return text
   } catch (err) {
     onFailure()
     throw err
