@@ -18,7 +18,7 @@ const ExtractionSchema = z.object({
   time: z.string().nullable().describe('Time in HH:MM 24h format'),
   notes: z.string().nullable().describe('Any notes or comments'),
   confirmation: z.boolean().nullable().describe('true for yes/confirm, false for no/cancel'),
-  for_other: z.boolean().default(false).describe('Whether booking is for someone else'),
+  for_other: z.boolean().nullable().describe('Whether booking is for someone else'),
   other_name: z.string().nullable().describe('Name of the other person if for_other'),
   other_relationship: z.string().nullable().describe('Relationship to other person'),
 })
@@ -204,7 +204,7 @@ export async function extractDataFromMessage(
 
     // Pass through extra fields for agent-processor
     if (extracted.gender) result.gender = extracted.gender
-    if (extracted.for_other) result.for_other = true
+    if (extracted.for_other === true) result.for_other = true
     if (extracted.other_name) result.other_name = extracted.other_name
     if (extracted.other_relationship) result.other_relationship = extracted.other_relationship
 
