@@ -1,4 +1,4 @@
-import { generateResponse, generateResponseWithTools } from '@/lib/ai/ai-client'
+import { generateResponseWithTools } from '@/lib/ai/ai-client'
 import type { ToolCall } from '@/lib/ai/ai-client'
 import { createServiceClient } from '@/lib/supabase/service'
 import type { AgentInput, AgentResponse, ParsedAIResponse, AdvancedAIConfig } from './types'
@@ -6,7 +6,9 @@ import { buildSystemPrompt } from './prompt-builder'
 import { ERROR_MESSAGES, ActionError } from './error-messages'
 import { executeAction, formatDateHebrew } from './action-executor'
 import { logError } from '@/lib/utils/error-logger'
-import { cached, CACHE_KEYS, CACHE_TTL } from '@/lib/cache/redis'
+import { buildAgentContext } from './context-builder'
+import { extractDataFromMessage } from './data-extractor'
+import { formatIsraelSQL } from '@/lib/utils/timezone'
 
 // ── Clean AI response: strip JSON, code blocks, and mixed content ──
 
@@ -75,289 +77,40 @@ export async function processAIAgent(
   const supabase = createServiceClient()
 
   try {
-  // 1. Load business context (cached) + fresh data in parallel
-  const [businessData, settingsData, personaData, historyResult, contactResult] =
-    await Promise.all([
-      // Cached: business info (rarely changes)
-      cached(
-        CACHE_KEYS.businessInfo(input.businessId),
-        async () => {
-          const { data } = await supabase.from('businesses').select('id, name, business_type').eq('id', input.businessId).single()
-          return data
-        },
-        CACHE_TTL.SETTINGS
-      ),
-      // Cached: business settings (rarely changes)
-      cached(
-        CACHE_KEYS.businessSettings(input.businessId),
-        async () => {
-          const { data } = await supabase.from('business_settings').select('id, business_id, services, working_hours, cancellation_policy, ai_config, ai_advanced').eq('business_id', input.businessId).single()
-          return data
-        },
-        CACHE_TTL.SETTINGS
-      ),
-      // Cached: AI persona (rarely changes)
-      cached(
-        CACHE_KEYS.aiPersona(input.businessId),
-        async () => {
-          const { data } = await supabase.from('ai_personas').select('id, business_id, tone, emoji_usage, style_examples, system_prompt').eq('business_id', input.businessId).single()
-          return data
-        },
-        CACHE_TTL.PERSONA
-      ),
-      // NOT cached: messages (always fresh)
-      supabase
-        .from('messages')
-        .select('content, direction, sender_type')
-        .eq('conversation_id', input.conversationId)
-        .order('created_at', { ascending: false })
-        .limit(20),
-      // NOT cached: contact (can change mid-conversation)
-      supabase
-        .from('contacts')
-        .select('name, status, phone, total_visits')
-        .eq('id', input.contactId)
-        .single(),
-    ])
+  // 1. Load business context (cached) + appointments + conversation history
+  const ctx = await buildAgentContext(input)
 
-  // Wrap cached results to match original { data } format
-  const businessResult = { data: businessData }
-  const settingsResult = { data: settingsData }
-  const personaResult = { data: personaData }
+  // Wrap for backward compatibility with rest of function
+  const businessResult = { data: { name: ctx.businessName, business_type: ctx.businessType } }
+  const settingsResult = { data: ctx.settings }
+  const personaResult = { data: ctx.persona }
+  const contactCtx = ctx.contact
+  const appointmentContext = ctx.appointmentContext
+  const services = ctx.services
+  const conversationHistory = ctx.conversationHistory
 
-  // Build contact context for the AI
-  const contactCtx = contactResult.data ? {
-    name: contactResult.data.name || input.contactName,
-    status: contactResult.data.status || input.contactStatus || 'new',
-    phone: contactResult.data.phone || input.contactPhone || '',
-    visits: contactResult.data.total_visits || input.contactVisits || 0,
-    gender: (contactResult.data as Record<string, unknown>).gender as string | null || null,
-  } : {
-    name: input.contactName,
-    status: input.contactStatus || 'new',
-    phone: input.contactPhone || '',
-    visits: input.contactVisits || 0,
-    gender: null as string | null,
-  }
-
-  // Load upcoming appointments for this contact + linked contacts (booked by this contact)
-  const israelNowForApts = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-  const nowForApts = `${israelNowForApts.getFullYear()}-${String(israelNowForApts.getMonth() + 1).padStart(2, '0')}-${String(israelNowForApts.getDate()).padStart(2, '0')}T${String(israelNowForApts.getHours()).padStart(2, '0')}:${String(israelNowForApts.getMinutes()).padStart(2, '0')}:00`
-
-  // Get own appointments
-  const { data: ownApts } = await supabase
-    .from('appointments')
-    .select('id, contact_name, service_type, start_time, status')
-    .eq('business_id', input.businessId)
-    .eq('contact_id', input.contactId)
-    .in('status', ['confirmed', 'pending'])
-    .gte('start_time', nowForApts)
-    .order('start_time')
-    .limit(5)
-
-  // Get appointments booked for linked contacts (friends/family)
-  const { data: linkedContacts } = await supabase
-    .from('contacts')
-    .select('id, name')
-    .eq('business_id', input.businessId)
-    .eq('linked_to', input.contactId)
-
-  let linkedApts: typeof ownApts = []
-  if (linkedContacts && linkedContacts.length > 0) {
-    const linkedIds = linkedContacts.map(c => c.id)
-    const { data } = await supabase
-      .from('appointments')
-      .select('id, contact_name, service_type, start_time, status')
-      .eq('business_id', input.businessId)
-      .in('contact_id', linkedIds)
-      .in('status', ['confirmed', 'pending'])
-      .gte('start_time', nowForApts)
-      .order('start_time')
-      .limit(5)
-    linkedApts = data || []
-  }
-
-  // Build appointment context string for AI
-  const allApts = [...(ownApts || []), ...(linkedApts || [])]
-  const appointmentContext = allApts.length > 0
-    ? allApts.map(a => {
-        const time = (a.start_time as string).substring(11, 16)
-        const date = (a.start_time as string).substring(0, 10)
-        const isLinked = linkedApts?.some(la => la.id === a.id)
-        return `${date} ${time} - ${a.service_type} - ${a.contact_name}${isLinked ? ' (קבעת עבורו/ה)' : ''}`
-      }).join('\n')
-    : 'אין תורים קרובים'
+  // Check if contact name is a placeholder (phone number or "לקוח 123")
+  const knownName = contactCtx.name || ''
+  const contactNameIsPlaceholder = !knownName
+    || /^\d+$/.test(knownName)
+    || /^[\d\s]+$/.test(knownName)
+    || knownName.startsWith('לקוח')
+    || knownName.startsWith('972')
+    || /^\+?\d{7,}/.test(knownName)
 
   // 2. Load booking state
   const { loadBookingState, saveBookingState, processState } = await import('@/lib/ai/booking-state')
   const bookingState = await loadBookingState(input.conversationId)
-  const services = (settingsResult.data?.services as Array<{ name: string; duration: number; price: number }>) || []
 
-  // 3. Build extraction prompt - AI only extracts data, doesn't decide
-  // Determine if the contact has a real known name
-  const knownContactName = contactCtx.name || ''
-  const contactNameIsPlaceholder = !knownContactName
-    || /^\d+$/.test(knownContactName)
-    || /^[\d\s]+$/.test(knownContactName)
-    || knownContactName.startsWith('לקוח')
-    || knownContactName.startsWith('972')
-    || /^\+?\d{7,}/.test(knownContactName)
-
-  // Build date lookup table in Israel timezone (precise, no timezone bugs)
-  const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-  const israelToday = `${israelNow.getFullYear()}-${String(israelNow.getMonth() + 1).padStart(2, '0')}-${String(israelNow.getDate()).padStart(2, '0')}`
-  const israelTime = `${String(israelNow.getHours()).padStart(2, '0')}:${String(israelNow.getMinutes()).padStart(2, '0')}`
-  const israelDayOfWeek = israelNow.getDay() // 0=Sunday
-  const hebrewDayNames = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
-  const todayHebrew = hebrewDayNames[israelDayOfWeek]
-
-  // Build next 14 days lookup — today FIRST, clearly marked
-  const dayLookup: string[] = []
-  for (let i = 0; i <= 13; i++) {
-    const d = new Date(israelNow)
-    d.setDate(d.getDate() + i)
-    const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-    const dayName = hebrewDayNames[d.getDay()]
-    if (i === 0) {
-      dayLookup.push(`*** היום = ${dateStr} (${dayName}) ← USE THIS FOR "היום" AND "${dayName}"`)
-    } else if (i === 1) {
-      dayLookup.push(`*** מחר = ${dateStr} (${dayName})`)
-    } else {
-      dayLookup.push(`${dayName} = ${dateStr} (in ${i} days)`)
-    }
-  }
-
-  const extractionPrompt = `IMPORTANT: Respond ONLY in valid JSON. Extract information from the user's message.
-You are extracting data for a booking system for "${businessResult.data?.name || 'business'}".
-
-Available services: ${services.map(s => s.name).join(', ')}
-Current booking step: ${bookingState.step}
-${!contactNameIsPlaceholder ? `Known customer name from DB: ${knownContactName}` : 'Customer name is NOT known yet — extract it from the message if mentioned.'}
-
-## CRITICAL — Date & Time Reference (Israel timezone):
-Today is: ${israelToday} (יום ${todayHebrew})
-Current time: ${israelTime}
-
-## Date lookup — USE THESE EXACT DATES, DO NOT CALCULATE YOUR OWN:
-${dayLookup.join('\n')}
-
-## RULES FOR DATE EXTRACTION — VERY IMPORTANT:
-- "היום" = ${israelToday}
-- "מחר" = ${dayLookup[1]?.split(' = ')[1]?.split(' ')[0] || ''}
-- If customer says a day name (e.g. "יום ראשון") AND today IS that day → use TODAY's date (${israelToday}), NOT next week!
-- If customer says a day name and today is NOT that day → use the NEAREST future occurrence from the list
-- CRITICAL: Today is ${todayHebrew} (${israelToday}). If someone says "${todayHebrew}" they mean TODAY.
-- "29.3" or "29/3" or "ב-29" = ${israelNow.getFullYear()}-03-29
-- NEVER invent a date. ONLY use dates from the lookup table above.
-- If you can't determine the date, return null.
-- NEVER say a date "already passed" if it's today's date!
-
-## RULES FOR TIME EXTRACTION:
-- "ב-3" or "בשלוש" = 15:00 (afternoon, not 03:00)
-- "ב-9" or "בתשע" = 09:00
-- "ב-10 בבוקר" = 10:00
-- "ב-8 בערב" = 20:00
-- Time must be in HH:MM format (24-hour). Examples: 09:00, 14:30, 17:00
-- If you can't determine the time, return null.
-- NEVER guess a time the customer didn't mention.
-
-Extract these fields:
-{
-  "intent": "book|cancel|reschedule|confirm|deny|provide_info|greeting|question|other",
-  "service": "service name if mentioned, or null",
-  "name": "person name if mentioned, or null",
-  "gender": "male|female|null",
-  "date": "YYYY-MM-DD from the lookup table above, or null",
-  "time": "HH:MM in 24h format, or null",
-  "notes": "any notes/comments, or null",
-  "confirmation": true/false/null,
-  "for_other": true/false,
-  "other_name": "name or null",
-  "other_relationship": "relationship or null"
-}
-
-Additional rules:
-- "כן"/"בטח"/"מאשר"/"יאללה"/"סבבה" → confirmation: true
-- "לא"/"ביטול" → confirmation: false
-- If step is "collecting_name" and message is 1-3 words, it's probably a name
-${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
-
-  // 4. Send to AI for extraction only
-  const conversationHistory = (historyResult.data || [])
-    .reverse()
-    .map((msg) => ({
-      role: (msg.direction === 'inbound' ? 'user' : 'model') as 'user' | 'model',
-      text: msg.content || '',
-    }))
-
-  const rawResponse = await generateResponse(
-    extractionPrompt,
-    conversationHistory.slice(-6), // Only last few messages for context
-    input.message
+  // 3-5. Extract data from message (prompt building + AI call + validation)
+  const extracted = await extractDataFromMessage(
+    input.message,
+    ctx.conversationHistory,
+    ctx.businessName,
+    services,
+    bookingState,
+    contactCtx,
   )
-
-  // 5. Parse extracted data
-  let extracted: import('@/lib/ai/booking-state').ExtractedData
-  try {
-    const cleaned = rawResponse.replace(/```json\n?|```/g, '').trim()
-    extracted = JSON.parse(cleaned)
-    // Log extraction for debugging
-    console.log(`[agent] Extracted: intent=${extracted.intent}, date=${extracted.date || '-'}, time=${extracted.time || '-'}, service=${extracted.service || '-'}, name=${extracted.name || '-'}`)
-  } catch {
-    console.warn(`[agent] Failed to parse AI extraction: "${rawResponse.substring(0, 100)}"`)
-    extracted = { intent: 'other' }
-  }
-
-  // 5.5 VALIDATE extracted date and time (prevent AI hallucinations)
-  if (extracted.date) {
-    // Validate date format: must be YYYY-MM-DD
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(extracted.date)) {
-      console.warn(`[agent] Invalid date format from AI: "${extracted.date}" — clearing`)
-      extracted.date = undefined as unknown as string
-    } else {
-      // Validate date is real (not Feb 30, etc.)
-      const testDate = new Date(extracted.date + 'T12:00:00')
-      if (isNaN(testDate.getTime())) {
-        console.warn(`[agent] Invalid date from AI: "${extracted.date}" — clearing`)
-        extracted.date = undefined as unknown as string
-      }
-      // Validate date is not in the past
-      if (extracted.date && extracted.date < israelToday) {
-        console.warn(`[agent] Past date from AI: "${extracted.date}" (today: ${israelToday}) — clearing`)
-        extracted.date = undefined as unknown as string
-      }
-    }
-  }
-  if (extracted.time) {
-    // Validate time format: must be HH:MM
-    if (!/^\d{2}:\d{2}$/.test(extracted.time)) {
-      // Try to fix common formats: "9:00" → "09:00"
-      const timeMatch = extracted.time.match(/^(\d{1,2}):(\d{2})$/)
-      if (timeMatch) {
-        extracted.time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`
-      } else {
-        console.warn(`[agent] Invalid time format from AI: "${extracted.time}" — clearing`)
-        extracted.time = undefined as unknown as string
-      }
-    }
-    // Validate time range (00:00-23:59) + round to nearest slot
-    if (extracted.time) {
-      const [h, m] = extracted.time.split(':').map(Number)
-      if (h < 0 || h > 23 || m < 0 || m > 59) {
-        console.warn(`[agent] Invalid time range from AI: "${extracted.time}" — clearing`)
-        extracted.time = undefined as unknown as string
-      } else {
-        // Round to nearest 30-minute slot (avoid 16:09, 10:15, etc.)
-        const roundedM = m < 15 ? 0 : m < 45 ? 30 : 0
-        const roundedH = m >= 45 ? h + 1 : h
-        const roundedTime = `${String(roundedH).padStart(2, '0')}:${String(roundedM).padStart(2, '0')}`
-        if (extracted.time !== roundedTime) {
-          console.log(`[agent] Rounded time: ${extracted.time} → ${roundedTime}`)
-          extracted.time = roundedTime
-        }
-      }
-    }
-  }
 
   // 5.6 Auto-update gender if detected and not already known
   const extractedAny = extracted as unknown as Record<string, unknown>
@@ -502,8 +255,7 @@ ${contactCtx.gender ? `Known gender: ${contactCtx.gender}` : ''}`
 
   // 6.8 Guard cancel/reschedule — verify appointment exists before executing
   if (stateResult.action?.type === 'cancel_appointment' || stateResult.action?.type === 'reschedule_appointment') {
-    const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-    const nowStr = `${israelNow.getFullYear()}-${String(israelNow.getMonth() + 1).padStart(2, '0')}-${String(israelNow.getDate()).padStart(2, '0')}T${String(israelNow.getHours()).padStart(2, '0')}:${String(israelNow.getMinutes()).padStart(2, '0')}:00`
+    const nowStr = formatIsraelSQL()
 
     const { data: existingApt } = await supabase
       .from('appointments')

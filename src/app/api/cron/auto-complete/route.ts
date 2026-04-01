@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { formatIsraelSQL } from '@/lib/utils/timezone'
 
 // ── Auto-Complete Appointments Cron ──────────────────
 // Marks past appointments as 'completed' and updates contact stats.
@@ -19,9 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Find all confirmed/pending appointments that have passed (Israel time)
-    const now = new Date()
-    const israelNow = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-    const nowStr = `${israelNow.getFullYear()}-${String(israelNow.getMonth() + 1).padStart(2, '0')}-${String(israelNow.getDate()).padStart(2, '0')}T${String(israelNow.getHours()).padStart(2, '0')}:${String(israelNow.getMinutes()).padStart(2, '0')}:00`
+    const nowStr = formatIsraelSQL()
 
     const { data: pastAppointments, error } = await supabase
       .from('appointments')

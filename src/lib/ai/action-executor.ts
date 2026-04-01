@@ -2,6 +2,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import type { AgentInput } from './types'
 import { ERROR_MESSAGES } from './error-messages'
 import { ActionError } from './error-messages'
+import { getIsraelNow, getIsraelToday, formatIsraelSQL } from '@/lib/utils/timezone'
 
 // ── Action Executor ─────────────────────────────────────
 
@@ -73,7 +74,7 @@ export async function executeAction(
         }
 
         // Reject booking in the past
-        const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+        const israelNow = getIsraelNow()
         const bookingDateTime = new Date(`${params.date}T${params.time}:00`)
         if (bookingDateTime < israelNow) {
           throw new ActionError(
@@ -312,7 +313,7 @@ export async function executeAction(
           })
 
           if (rpcError) {
-            if (rpcError.message?.includes('TIME_SLOT_CONFLICT')) {
+            if (rpcError.message?.includes('TIME_SLOT_CONFLICT') || rpcError.message?.includes('violates exclusion constraint')) {
               throw new ActionError('TIME_SLOT_CONFLICT', ERROR_MESSAGES.TIME_SLOT_CONFLICT)
             }
             throw new ActionError(
@@ -344,8 +345,7 @@ export async function executeAction(
 
     case 'cancel_appointment': {
       const params = action.params as { appointment_id?: string; cancel_all?: boolean }
-      const nowISR = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
-      const nowStr = `${nowISR.getFullYear()}-${String(nowISR.getMonth() + 1).padStart(2, '0')}-${String(nowISR.getDate()).padStart(2, '0')}T${String(nowISR.getHours()).padStart(2, '0')}:${String(nowISR.getMinutes()).padStart(2, '0')}:00`
+      const nowStr = formatIsraelSQL()
 
       if (params.appointment_id) {
         const { error: cancelErr } = await supabase
@@ -479,7 +479,7 @@ export async function executeAction(
         .eq('business_id', input.businessId)
         .eq('contact_id', input.contactId)
         .in('status', ['confirmed', 'pending'])
-        .gte('start_time', new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' }) + 'T00:00:00')
+        .gte('start_time', getIsraelToday() + 'T00:00:00')
         .order('start_time', { ascending: true })
         .limit(1)
         .single()
@@ -514,7 +514,7 @@ export async function executeAction(
         })
 
         if (insertError) {
-          if (insertError.message?.includes('TIME_SLOT_CONFLICT')) {
+          if (insertError.message?.includes('TIME_SLOT_CONFLICT') || insertError.message?.includes('violates exclusion constraint')) {
             throw new ActionError('TIME_SLOT_CONFLICT', 'השעה הזו תפוסה. נסה שעה אחרת להזזת התור.')
           }
           // Insert failed — DON'T cancel old appointment! Customer keeps their existing booking.

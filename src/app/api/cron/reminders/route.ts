@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
+import { getIsraelNow, formatIsraelSQL } from '@/lib/utils/timezone'
 
 // ── Appointment Reminders Cron ──────────────────
 // Sends WhatsApp reminders 1 hour before appointments.
@@ -19,7 +20,7 @@ export async function GET(req: NextRequest) {
 
   try {
     // Get Israel time
-    const israelNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+    const israelNow = getIsraelNow()
 
     // Window: 45-75 minutes from now (catches appointments in the next hour)
     const from = new Date(israelNow)
@@ -27,8 +28,8 @@ export async function GET(req: NextRequest) {
     const to = new Date(israelNow)
     to.setMinutes(to.getMinutes() + 75)
 
-    const fromStr = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, '0')}-${String(from.getDate()).padStart(2, '0')}T${String(from.getHours()).padStart(2, '0')}:${String(from.getMinutes()).padStart(2, '0')}:00`
-    const toStr = `${to.getFullYear()}-${String(to.getMonth() + 1).padStart(2, '0')}-${String(to.getDate()).padStart(2, '0')}T${String(to.getHours()).padStart(2, '0')}:${String(to.getMinutes()).padStart(2, '0')}:00`
+    const fromStr = formatIsraelSQL(from)
+    const toStr = formatIsraelSQL(to)
 
     // Find upcoming appointments that haven't been reminded
     const { data: appointments } = await supabase

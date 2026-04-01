@@ -1,5 +1,6 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import { isClosedForBusiness, isErevChag, getHolidayName, type HolidaysConfig } from '@/lib/utils/hebrew-calendar'
+import { getIsraelNow, getIsraelToday } from '@/lib/utils/timezone'
 
 // ── Types ──────────────────────────────────────────
 
@@ -457,10 +458,9 @@ export function getValidSlots(
   // If date is today, only show future slots (+ 30 min buffer)
   let minTimeMin = 0
   if (dateStr) {
-    const now = new Date()
-    const todayISR = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Jerusalem' })
+    const todayISR = getIsraelToday()
     if (dateStr === todayISR) {
-      const nowISR = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Jerusalem' }))
+      const nowISR = getIsraelNow()
       minTimeMin = nowISR.getHours() * 60 + nowISR.getMinutes() + 30 // 30 min buffer
     }
   }
