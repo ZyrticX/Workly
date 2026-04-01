@@ -16,6 +16,7 @@ export interface BookingState {
   forOther?: boolean // Booking for someone else (friend, family)
   otherName?: string // Name of the other person
   otherRelationship?: string // 'mother', 'friend', 'spouse', 'child', etc.
+  cancelOptions?: Array<{ id: string; service: string; date: string; time: string; contactName: string }> // For multi-appointment cancel selection
 }
 
 export interface ExtractedData {
@@ -377,16 +378,52 @@ export function processState(
     }
   }
 
+  // ── Cancelling step (customer picking which appointment to cancel) ──
+  if (state.step === 'cancelling' && state.cancelOptions && state.cancelOptions.length > 0) {
+    // Parse selection: number ("1", "2"), confirmation, or denial
+    const msg = (extracted.notes || '').trim()
+    const rawMsg = extracted.service || msg // sometimes the number lands in service
+    const numMatch = rawMsg.match(/^(\d+)$/) || msg.match(/^(\d+)$/)
+    const selIdx = numMatch ? parseInt(numMatch[1], 10) - 1 : -1
+
+    if (extracted.confirmation === false || extracted.intent === 'deny') {
+      return { newState: { step: 'idle' }, aiInstruction: 'הלקוח ביטל את הבקשה. שאל במה אפשר לעזור.', action: null }
+    }
+
+    if (selIdx >= 0 && selIdx < state.cancelOptions.length) {
+      const chosen = state.cancelOptions[selIdx]
+      action = { type: 'cancel_appointment', params: { appointment_id: chosen.id } }
+      aiInstruction = `ביטלת את התור ל${chosen.service} ביום ${getDayName(chosen.date)} ${formatDate(chosen.date)} בשעה ${chosen.time}. אמור ללקוח שהתור בוטל ושאל אם רוצה לקבוע תור חדש.`
+      return { newState: { step: 'idle' }, aiInstruction, action }
+    }
+
+    // Customer said something else — re-ask
+    const listText = state.cancelOptions.map((o, i) =>
+      `${i + 1}. ${o.service} — ${getDayName(o.date)} ${formatDate(o.date)} ב-${o.time}${o.contactName ? ` (${o.contactName})` : ''}`
+    ).join('\n')
+    aiInstruction = `לא הבנתי איזה תור לבטל. תשאל שוב בעדינות:\n${listText}\nשלח מספר (1, 2, ...) לבחירה.`
+    return { newState: state, aiInstruction, action: null }
+  }
+
   // ── Cancel intent ──
   if (extracted.intent === 'cancel') {
     // Check if customer wants to cancel ALL appointments (including linked contacts)
     const cancelAll = /כל התורים|את הכל|הכל|כולם|את כולם|כל מה ש/.test(extracted.notes || '')
       || /כל התורים|את הכל|הכל|כולם/.test(extracted.service || '')
-    action = { type: 'cancel_appointment', params: { cancel_all: cancelAll } }
-    aiInstruction = cancelAll
-      ? `הלקוח רוצה לבטל את כל התורים (כולל תורים שקבע לאחרים). אמור לו שביטלת הכל.`
-      : `הלקוח רוצה לבטל תור. אמור לו שביטלת ושאל אם רוצה לקבוע תור חדש.`
-    return { newState: { step: 'idle' }, aiInstruction, action }
+
+    if (cancelAll) {
+      action = { type: 'cancel_appointment', params: { cancel_all: true } }
+      aiInstruction = `הלקוח רוצה לבטל את כל התורים (כולל תורים שקבע לאחרים). אמור לו שביטלת הכל.`
+      return { newState: { step: 'idle' }, aiInstruction, action }
+    }
+
+    // Transition to 'cancelling' — agent-processor will fetch appointments and either
+    // cancel immediately (1 appointment) or build a list (2+ appointments)
+    return {
+      newState: { step: 'cancelling' },
+      aiInstruction: '__CANCEL_PENDING__', // Replaced by agent-processor
+      action: null,
+    }
   }
 
   // ── Reschedule intent ──

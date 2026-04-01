@@ -129,6 +129,61 @@ export async function processAIAgent(
     holidaysConfig
   )
 
+  // 6.4 Handle __CANCEL_PENDING__ — fetch appointments and decide flow
+  if (stateResult.aiInstruction === '__CANCEL_PENDING__') {
+    const nowStr = formatIsraelSQL()
+    const contactIds = [input.contactId]
+    const { data: linkedContacts } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('business_id', input.businessId)
+      .eq('linked_to', input.contactId)
+    if (linkedContacts) {
+      contactIds.push(...linkedContacts.map(c => c.id))
+    }
+
+    const { data: upcoming } = await supabase
+      .from('appointments')
+      .select('id, service_type, start_time, contact_name, contact_id')
+      .eq('business_id', input.businessId)
+      .in('contact_id', contactIds)
+      .in('status', ['confirmed', 'pending'])
+      .gte('start_time', nowStr)
+      .order('start_time', { ascending: true })
+
+    if (!upcoming || upcoming.length === 0) {
+      stateResult.aiInstruction = 'אין תור קיים לביטול. שאל את הלקוח אם רוצה לקבוע תור חדש.'
+      stateResult.newState = { step: 'idle' }
+    } else if (upcoming.length === 1) {
+      // Single appointment — cancel immediately (same as old behavior)
+      stateResult.action = { type: 'cancel_appointment', params: { appointment_id: upcoming[0].id } }
+      stateResult.aiInstruction = `הלקוח רוצה לבטל תור. אמור לו שביטלת ושאל אם רוצה לקבוע תור חדש.`
+      stateResult.newState = { step: 'idle' }
+    } else {
+      // Multiple appointments — list and ask
+      const options = upcoming.map(a => ({
+        id: a.id,
+        service: a.service_type || '',
+        date: (a.start_time as string).substring(0, 10),
+        time: (a.start_time as string).substring(11, 16),
+        contactName: a.contact_id !== input.contactId ? (a.contact_name || '') : '',
+      }))
+
+      const hebrewDays = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת']
+      const listText = options.map((o, i) => {
+        const d = new Date(o.date + 'T12:00:00')
+        const dayName = hebrewDays[d.getDay()] || ''
+        const [, m, day] = o.date.split('-')
+        const linked = o.contactName ? ` (עבור ${o.contactName})` : ''
+        return `${i + 1}. ${o.service} — יום ${dayName} ${day}/${m} ב-${o.time}${linked}`
+      }).join('\n')
+
+      stateResult.aiInstruction = `ללקוח יש כמה תורים. שאל אותו איזה תור לבטל:\n${listText}\n\nבקש מהלקוח לשלוח מספר (1, 2, ...) כדי לבחור.`
+      stateResult.newState = { step: 'cancelling', cancelOptions: options }
+    }
+    await saveBookingState(input.conversationId, stateResult.newState)
+  }
+
   // 6.5 CRITICAL: Check availability BEFORE confirming
   // If state machine selected a time and moved to collecting_notes or confirming,
   // verify the slot is actually free in the DB
