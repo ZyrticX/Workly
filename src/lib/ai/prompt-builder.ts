@@ -29,8 +29,9 @@ export function buildSystemPrompt(
   business: Record<string, unknown> | null,
   settings: Record<string, unknown> | null,
   persona: Record<string, unknown> | null,
-  contactContext?: { name: string; status: string; phone: string; visits: number; gender?: string | null },
-  advancedConfig?: AdvancedAIConfig | null
+  contactContext?: { name: string; status: string; phone: string; visits: number; gender?: string | null; memory?: Record<string, unknown> },
+  advancedConfig?: AdvancedAIConfig | null,
+  memoryContext?: { conversationSummary?: string | null; knowledgeContext?: string | null }
 ): string {
   const biz = business || {}
   const sett = settings || {}
@@ -247,6 +248,23 @@ ${!contactContext.name ? '- **השם לא ידוע!** שאלי "איך קורא�
 - הציעי עדיפות בזמני תורים
 ` : ''}
 
+${(() => {
+  // Tier 1: Contact memory
+  const mem = contactContext?.memory || {}
+  const memEntries = Object.entries(mem).filter(([, v]) => v)
+  const memBlock = memEntries.length > 0
+    ? `\n## זיכרון אישי ללקוח (השתמש בזה!):\n${memEntries.map(([k, v]) => `- ${k}: ${v}`).join('\n')}\n`
+    : ''
+  // Tier 2: Conversation summary
+  const summaryBlock = memoryContext?.conversationSummary
+    ? `\n## סיכום שיחות קודמות:\n${memoryContext.conversationSummary}\n`
+    : ''
+  // Tier 3: Knowledge base matches
+  const kbBlock = memoryContext?.knowledgeContext
+    ? `\n## מידע רלוונטי מבסיס הידע:\n${memoryContext.knowledgeContext}\n`
+    : ''
+  return memBlock + summaryBlock + kbBlock
+})()}
 ## פעולות (tools):
 יש לך כלים (tools) לביצוע פעולות מסוימות. השתמש בהם כשצריך — אל תכתוב JSON בגוף ההודעה!
 - **update_contact** — לעדכון שם/מגדר כשלומדים מידע חדש. **אל תבקש מספר טלפון!**

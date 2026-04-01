@@ -82,6 +82,8 @@ export async function processAIAgent(
   const appointmentContext = ctx.appointmentContext
   const services = ctx.services
   const conversationHistory = ctx.conversationHistory
+  const conversationSummary = ctx.conversationSummary
+  const knowledgeContext = ctx.knowledgeContext
 
   // Check if contact name is a placeholder (phone number or "לקוח 123")
   const knownName = contactCtx.name || ''
@@ -282,7 +284,8 @@ export async function processAIAgent(
     settingsResult.data,
     personaResult.data,
     promptContactCtx,
-    aiAdvanced
+    aiAdvanced,
+    { conversationSummary, knowledgeContext }
   ) + `\n\n## תורים קרובים של ${contactCtx.name}:\n${appointmentContext}\n\nכשלקוח שואל "איזה תורים יש לי" או "מה התורים שלי" — הצג את כל התורים מהרשימה למעלה, כולל תורים שקבע לאחרים.\n**חשוב**: תורים המסומנים "(קבעת עבורו/ה)" הם תורים שהלקוח הנוכחי קבע לחבר/משפחה שלו. זה **לא** מידע של לקוח אחר — זה המידע של הלקוח הנוכחי! מותר ואף חובה לספר לו על התורים האלה. למשל: "יש לך תור ב-20:30, ו**גם** קבעת ליוסי תור ב-21:00".`
   + (contactNameIsPlaceholder ? `\n\n## חשוב — השם של הלקוח לא ידוע!\nהשם שיש לנו הוא מזהה זמני בלבד. **אל תקרא ללקוח "${contactCtx.name}"!** פנה אליו בצורה ידידותית בלי שם (למשל "היי!" או "אהלן!"). ברגע הראשון הנוח — שאל "איך קוראים לך?" והשתמש ב-tool update_contact עם השם שהוא נותן.` : '')
 

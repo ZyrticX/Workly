@@ -11,6 +11,7 @@ export interface ContactContext {
   phone: string
   visits: number
   gender: string | null
+  memory: Record<string, unknown>
 }
 
 export interface AgentContext {
@@ -20,8 +21,10 @@ export interface AgentContext {
   persona: Record<string, unknown> | null
   contact: ContactContext
   conversationHistory: Array<{ role: 'user' | 'model'; text: string }>
+  conversationSummary: string | null
   appointmentContext: string
   services: Array<{ name: string; duration: number; price: number }>
+  knowledgeContext: string | null
 }
 
 // ── Build Agent Context ──────────────────────────
@@ -64,24 +67,27 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
         .limit(20),
       supabase
         .from('contacts')
-        .select('name, status, phone, total_visits')
+        .select('name, status, phone, total_visits, memory')
         .eq('id', input.contactId)
         .single(),
     ])
 
   // Build contact context
-  const contact: ContactContext = contactResult.data ? {
-    name: contactResult.data.name || input.contactName,
-    status: contactResult.data.status || input.contactStatus || 'new',
-    phone: contactResult.data.phone || input.contactPhone || '',
-    visits: contactResult.data.total_visits || input.contactVisits || 0,
-    gender: (contactResult.data as Record<string, unknown>).gender as string | null || null,
+  const contactData = contactResult.data as Record<string, unknown> | null
+  const contact: ContactContext = contactData ? {
+    name: (contactData.name as string) || input.contactName,
+    status: (contactData.status as string) || input.contactStatus || 'new',
+    phone: (contactData.phone as string) || input.contactPhone || '',
+    visits: (contactData.total_visits as number) || input.contactVisits || 0,
+    gender: (contactData.gender as string | null) || null,
+    memory: (contactData.memory as Record<string, unknown>) || {},
   } : {
     name: input.contactName,
     status: input.contactStatus || 'new',
     phone: input.contactPhone || '',
     visits: input.contactVisits || 0,
     gender: null,
+    memory: {},
   }
 
   // Load upcoming appointments for this contact + linked contacts
@@ -139,6 +145,30 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
 
   const services = (settingsData?.services as Array<{ name: string; duration: number; price: number }>) || []
 
+  // Load conversation summary (if exists)
+  const { data: convData } = await supabase
+    .from('conversations')
+    .select('ai_summary')
+    .eq('id', input.conversationId)
+    .single()
+  const conversationSummary = (convData?.ai_summary as string) || null
+
+  // Load relevant knowledge base entries (keyword match against message)
+  let knowledgeContext: string | null = null
+  const messageWords = input.message.split(/\s+/).filter(w => w.length > 2)
+  if (messageWords.length > 0) {
+    const { data: kbEntries } = await supabase
+      .from('business_knowledge')
+      .select('question, answer')
+      .eq('business_id', input.businessId)
+      .overlaps('keywords', messageWords)
+      .limit(3)
+
+    if (kbEntries && kbEntries.length > 0) {
+      knowledgeContext = kbEntries.map(e => `Q: ${e.question}\nA: ${e.answer}`).join('\n\n')
+    }
+  }
+
   return {
     businessName: businessData?.name || '',
     businessType: businessData?.business_type || '',
@@ -146,7 +176,9 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
     persona: personaData as Record<string, unknown> | null,
     contact,
     conversationHistory,
+    conversationSummary,
     appointmentContext,
     services,
+    knowledgeContext,
   }
 }
