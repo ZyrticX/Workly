@@ -1,11 +1,20 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 
 // ── Appointment Reminders Cron ──────────────────
 // Sends WhatsApp reminders 1 hour before appointments.
 // Should run every 15 minutes.
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Verify cron secret
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) {
+    return NextResponse.json({ error: 'CRON_SECRET not configured' }, { status: 500 })
+  }
+  if (req.headers.get('authorization') !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const supabase = createServiceClient()
 
   try {

@@ -53,25 +53,55 @@ function transliterateToHebrew(name: string): string {
 // ── Webhook Handler for WAHA ────────────────────────────
 // Uses service client — webhooks have no auth context.
 
-// ── Conversation-level mutex to prevent double responses ──
-// Key: conversationId, Value: timestamp when lock was acquired
-const conversationLocks = new Map<string, number>()
-// Track messages that arrived while conversation was locked
-const pendingMessages = new Map<string, { businessId: string; contactId: string; contactName: string; contactStatus: string; contactPhone: string; chatId: string; sessionId: string }>()
-const LOCK_TTL_MS = 30_000 // 30s max lock duration (safety valve)
+// ── Conversation-level mutex (Redis-backed) to prevent double responses ──
+import { getRedis } from '@/lib/cache/redis'
 
-function acquireLock(conversationId: string): boolean {
-  const now = Date.now()
-  const existing = conversationLocks.get(conversationId)
-  if (existing && now - existing < LOCK_TTL_MS) {
-    return false // Lock is held
-  }
-  conversationLocks.set(conversationId, now)
-  return true
+interface PendingMessage {
+  businessId: string
+  contactId: string
+  contactName: string
+  contactStatus: string
+  contactPhone: string
+  chatId: string
+  sessionId: string
 }
 
-function releaseLock(conversationId: string): void {
-  conversationLocks.delete(conversationId)
+const LOCK_TTL_MS = 30_000 // 30s max lock duration
+
+async function acquireLock(conversationId: string): Promise<boolean> {
+  try {
+    const redis = getRedis()
+    const result = await redis.set(`lock:conv:${conversationId}`, Date.now().toString(), 'PX', LOCK_TTL_MS, 'NX')
+    return result === 'OK'
+  } catch {
+    return true // Redis down → allow through (graceful degradation)
+  }
+}
+
+async function releaseLock(conversationId: string): Promise<void> {
+  try {
+    const redis = getRedis()
+    await redis.del(`lock:conv:${conversationId}`)
+  } catch {
+    // Lock auto-expires via PX
+  }
+}
+
+async function pushPending(conversationId: string, data: PendingMessage): Promise<void> {
+  try {
+    const redis = getRedis()
+    await redis.set(`pending:${conversationId}`, JSON.stringify(data), 'EX', 300)
+  } catch {}
+}
+
+async function popPending(conversationId: string): Promise<PendingMessage | null> {
+  try {
+    const redis = getRedis()
+    const raw = await redis.getdel(`pending:${conversationId}`)
+    return raw ? JSON.parse(raw) as PendingMessage : null
+  } catch {
+    return null
+  }
 }
 
 // ── Error counter helpers ───────────────────────────────
@@ -366,9 +396,9 @@ export async function POST(req: NextRequest) {
         const convId = conversation!.id
 
         // ── Mutex: prevent double responses from simultaneous webhooks ──
-        if (!acquireLock(convId)) {
+        if (!(await acquireLock(convId))) {
           // Message already saved to DB above — mark as pending so we process it after current request finishes
-          pendingMessages.set(convId, {
+          await pushPending(convId, {
             businessId: phone.business_id,
             contactId: contact!.id,
             contactName: contact!.name || from,
@@ -499,14 +529,13 @@ export async function POST(req: NextRequest) {
           // Increment error counter (may auto-disable bot)
           await incrementErrorCounter(supabase, convId, phone.business_id)
         } finally {
-          releaseLock(convId)
+          await releaseLock(convId)
 
           // Check if new messages arrived while we were processing
-          const pending = pendingMessages.get(convId)
+          const pending = await popPending(convId)
           if (pending) {
-            pendingMessages.delete(convId)
             // Re-acquire lock and process the latest unread message
-            if (acquireLock(convId)) {
+            if (await acquireLock(convId)) {
               try {
                 // Get the latest inbound message that has no AI response after it
                 const { data: latestMsg } = await supabase
@@ -551,7 +580,7 @@ export async function POST(req: NextRequest) {
               } catch (pendingErr) {
                 console.error('[webhook] Failed to process pending message:', pendingErr)
               } finally {
-                releaseLock(convId)
+                await releaseLock(convId)
               }
             }
           }

@@ -110,7 +110,12 @@ async function getDashboardData() {
   // Auto-complete past appointments (lightweight, runs on every dashboard load)
   try {
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://auto-crm.org'
-    fetch(`${appUrl}/api/cron/auto-complete`).catch(() => {})
+    const cronSecret = process.env.CRON_SECRET
+    if (cronSecret) {
+      fetch(`${appUrl}/api/cron/auto-complete`, {
+        headers: { Authorization: `Bearer ${cronSecret}` },
+      }).catch(() => {})
+    }
   } catch { /* fire and forget */ }
 
   const now = new Date()

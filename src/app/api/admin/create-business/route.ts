@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
-import { createClient } from '@/lib/supabase/server'
 import { generateResponse } from '@/lib/ai/ai-client'
-
-const ADMIN_EMAIL = 'evgeniyphotos1@gmail.com'
+import { verifyAdmin } from '@/lib/auth/admin-guard'
 
 export async function POST(req: NextRequest) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const auth = await verifyAdmin()
+  if (auth.error) return auth.error
 
   const body = await req.json()
   const {
@@ -74,7 +71,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Notify admin (you)
     await supabase.from('admin_notifications').insert({
-      target_email: ADMIN_EMAIL,
+      target_email: auth.user.email,
       type: 'new_client',
       title: `לקוח חדש: ${businessName}`,
       body: `${assignedTo ? `מטפל: ${assignedTo}\n` : ''}סוג: ${businessType}\nסטטוס: ${clientStatus === 'lead' ? 'פוטנציאלי' : 'פעיל'}\nמייל: ${ownerEmail}`,
@@ -98,11 +95,8 @@ export async function POST(req: NextRequest) {
 
 // === Approve draft → create actual user ===
 export async function PATCH(req: NextRequest) {
-  const supabaseAuth = await createClient()
-  const { data: { user } } = await supabaseAuth.auth.getUser()
-  if (!user || user.email !== ADMIN_EMAIL) {
-    return NextResponse.json({ error: 'Only main admin can approve' }, { status: 403 })
-  }
+  const auth = await verifyAdmin()
+  if (auth.error) return auth.error
 
   const { businessId, action } = await req.json()
   const supabase = createServiceClient()
@@ -172,7 +166,7 @@ export async function PATCH(req: NextRequest) {
 
     // Notify
     await supabase.from('admin_notifications').insert({
-      target_email: ADMIN_EMAIL,
+      target_email: auth.user.email,
       type: 'client_approved',
       title: `לקוח אושר`,
       body: `${email} הופעל. סיסמה: ${password}`,

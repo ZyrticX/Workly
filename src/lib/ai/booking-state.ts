@@ -598,21 +598,34 @@ export async function checkAvailability(
 
 // ── Load/Save State ──────────────────────────────
 
+const BOOKING_STATE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
 export async function loadBookingState(conversationId: string): Promise<BookingState> {
   const supabase = createServiceClient()
   const { data } = await supabase
     .from('conversations')
-    .select('booking_state')
+    .select('booking_state, updated_at')
     .eq('id', conversationId)
     .single()
 
-  return (data?.booking_state as BookingState) || { step: 'idle' }
+  const state = (data?.booking_state as BookingState) || { step: 'idle' }
+
+  // Auto-reset stale booking flows (idle for > 10 minutes)
+  if (state.step !== 'idle' && data?.updated_at) {
+    const elapsed = Date.now() - new Date(data.updated_at).getTime()
+    if (elapsed > BOOKING_STATE_TTL_MS) {
+      console.log(`[booking] Resetting stale state for conversation ${conversationId} (idle ${Math.round(elapsed / 60000)}m)`)
+      return { step: 'idle' }
+    }
+  }
+
+  return state
 }
 
 export async function saveBookingState(conversationId: string, state: BookingState): Promise<void> {
   const supabase = createServiceClient()
   await supabase
     .from('conversations')
-    .update({ booking_state: state })
+    .update({ booking_state: state, updated_at: new Date().toISOString() })
     .eq('id', conversationId)
 }

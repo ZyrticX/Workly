@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const auth = await verifyAdmin()
+  if (auth.error) return auth.error
+
   const body = await req.json()
   const { id, status } = body
   if (!id || !status) return NextResponse.json({ error: 'Missing id or status' }, { status: 400 })
