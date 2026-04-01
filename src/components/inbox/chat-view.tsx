@@ -65,6 +65,12 @@ export function ChatView({ conversationId, conversation: initialConversation, on
     fetchConversation()
   }, [conversationId, initialConversation]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Mark conversation as read when opened
+  useEffect(() => {
+    if (!conversationId) return
+    fetch(`/api/conversations/${conversationId}/read`, { method: 'PATCH' }).catch(() => {})
+  }, [conversationId])
+
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })

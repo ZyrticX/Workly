@@ -104,7 +104,8 @@ function ConversationRow({ conversation, isActive, onClick }: ConversationRowPro
   const color = getAvatarColor(contactName)
   const initials = getInitials(contactName)
   const lastMsg = conversation.lastMessage
-  const hasUnread = lastMsg?.direction === 'inbound' && conversation.status === 'active'
+  const unreadCount = conversation.unread_count || 0
+  const hasUnread = unreadCount > 0
 
   // Truncate the last message preview
   const preview = lastMsg?.content
@@ -184,9 +185,11 @@ function ConversationRow({ conversation, isActive, onClick }: ConversationRowPro
               {conversation.is_bot_active ? 'AI' : 'ידני'}
             </span>
 
-            {/* Unread indicator */}
+            {/* Unread count badge */}
             {hasUnread && (
-              <span className="h-2.5 w-2.5 rounded-full bg-[var(--color-primary)]" aria-label="הודעה שלא נקראה" />
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--color-primary)] px-1 text-[10px] font-bold text-white" aria-label={`${unreadCount} הודעות שלא נקראו`}>
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </div>
         </div>

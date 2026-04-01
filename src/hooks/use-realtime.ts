@@ -46,6 +46,7 @@ interface RealtimeConversation {
   is_bot_active: boolean
   last_message_at: string
   created_at: string
+  unread_count: number
   contacts: { name: string | null; phone: string | null; status: string } | null
   lastMessage: { content: string | null; created_at: string; direction: string; sender_type: string } | null
 }

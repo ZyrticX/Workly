@@ -387,11 +387,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'message save failed' }, { status: 500 })
       }
 
-      // 5. Update conversation timestamp
-      await supabase
-        .from('conversations')
-        .update({ last_message_at: new Date().toISOString() })
-        .eq('id', conversation!.id)
+      // 5. Update conversation timestamp + increment unread count
+      await supabase.rpc('increment_unread', { p_conversation_id: conversation!.id })
 
       // 6. Run AI agent if bot is active
       if (conversation!.is_bot_active) {

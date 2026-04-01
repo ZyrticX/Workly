@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { NotificationsBell } from '@/components/ui/notifications-bell'
+import { useInboxUnreadCount } from '@/hooks/use-inbox-unread'
 
 interface SidebarItem {
   label: string
@@ -42,7 +43,8 @@ const secondaryNavItems: SidebarItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname()
-  const { businessName, loading } = useAuth()
+  const { businessId, businessName, loading } = useAuth()
+  const inboxUnread = useInboxUnreadCount(businessId)
 
   function isActive(href: string): boolean {
     if (href === '/') return pathname === '/'
@@ -88,7 +90,12 @@ export function Sidebar() {
               <span className="absolute right-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-full bg-[var(--color-primary-dark)]" />
             )}
             <item.icon className="h-5 w-5 shrink-0" />
-            <span>{item.label}</span>
+            <span className="flex-1">{item.label}</span>
+            {item.href === '/inbox' && inboxUnread > 0 && (
+              <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white">
+                {inboxUnread > 99 ? '99+' : inboxUnread}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

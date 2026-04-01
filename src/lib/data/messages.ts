@@ -26,6 +26,7 @@ export interface ConversationWithContact {
   is_bot_active: boolean
   last_message_at: string
   created_at: string
+  unread_count: number
   contacts: ContactInfo | null
   lastMessage: LastMessage | null
 }
@@ -126,6 +127,7 @@ export async function getConversations(
       is_bot_active: conv.is_bot_active,
       last_message_at: conv.last_message_at,
       created_at: conv.created_at,
+      unread_count: conv.unread_count ?? 0,
       contacts: conv.contacts,
       lastMessage,
     } as ConversationWithContact
