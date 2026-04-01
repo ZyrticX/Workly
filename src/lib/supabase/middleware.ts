@@ -37,9 +37,14 @@ export async function updateSession(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // 1. Not logged in → redirect to login (except public paths)
+  // 1. Not logged in → redirect to landing or login (except public paths)
   if (!user && !PUBLIC_PATHS.some(p => pathname.startsWith(p))) {
     const url = request.nextUrl.clone()
+    // Root → show public landing page
+    if (pathname === '/') {
+      url.pathname = '/landing'
+      return NextResponse.redirect(url)
+    }
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }

@@ -17,6 +17,8 @@ import {
   ChevronDown,
 } from 'lucide-react'
 
+const WHATSAPP_CONTACT = 'https://wa.me/972544961231?text=%D7%94%D7%99%D7%99%2C+%D7%90%D7%A0%D7%99+%D7%A8%D7%95%D7%A6%D7%94+%D7%9C%D7%A9%D7%9E%D7%95%D7%A2+%D7%A2%D7%9C+Workly'
+
 export const metadata: Metadata = {
   title: 'Workly — העסק שלך עובד גם כשאתה לא',
   description:
@@ -25,6 +27,7 @@ export const metadata: Metadata = {
     title: 'Workly — העסק שלך עובד גם כשאתה לא',
     description:
       'הלקוחות שלך מקבלים מענה מיידי בוואטסאפ, תורים נקבעים אוטומטית, והיומן מתמלא — 24/7.',
+    url: 'https://auto-crm.org',
     type: 'website',
   },
 }
@@ -101,12 +104,14 @@ export default function LandingPage() {
             <a href="#how" className="hover:text-white transition-colors duration-200 cursor-pointer">איך זה עובד</a>
             <a href="#pricing" className="hover:text-white transition-colors duration-200 cursor-pointer">מחירים</a>
           </div>
-          <Link
-            href="/register"
+          <a
+            href={WHATSAPP_CONTACT}
+            target="_blank"
+            rel="noopener noreferrer"
             className="px-5 py-2 bg-[#25D366] text-white text-sm font-semibold rounded-xl hover:bg-[#1eba58] transition-all duration-200 shadow-[0_0_20px_rgba(37,211,102,0.3)] hover:shadow-[0_0_30px_rgba(37,211,102,0.5)] cursor-pointer"
           >
-            התחל בחינם
-          </Link>
+            דברו איתנו
+          </a>
         </div>
       </nav>
 
@@ -142,13 +147,15 @@ export default function LandingPage() {
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-              <Link
-                href="/register"
+              <a
+                href={WHATSAPP_CONTACT}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="group px-8 py-4 bg-[#25D366] text-white text-lg font-bold rounded-2xl hover:bg-[#1eba58] transition-all duration-300 shadow-[0_0_30px_rgba(37,211,102,0.3)] hover:shadow-[0_0_50px_rgba(37,211,102,0.5)] hover:-translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
               >
-                התחל בחינם
+                דברו איתנו
                 <ArrowLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform duration-200" />
-              </Link>
+              </a>
               <a
                 href="#how"
                 className="px-8 py-4 bg-white/[0.04] text-white/80 text-lg font-medium rounded-2xl hover:bg-white/[0.08] transition-all duration-200 border border-white/[0.08] hover:border-white/[0.15] cursor-pointer text-center"
@@ -158,7 +165,7 @@ export default function LandingPage() {
             </div>
 
             <p className="text-xs text-white/25 mt-5">
-              בלי כרטיס אשראי&ensp;·&ensp;הגדרה ב-5 דקות&ensp;·&ensp;ביטול בכל עת
+              הגדרה ב-5 דקות&ensp;·&ensp;24/7 זמינות&ensp;·&ensp;ביטול בכל עת
             </p>
           </div>
 
@@ -433,7 +440,7 @@ export default function LandingPage() {
                   'יומן + ניהול לקוחות',
                   'תזכורות אוטומטיות',
                 ],
-                cta: 'התחל בחינם',
+                cta: 'דברו איתנו',
                 popular: false,
               },
               {
@@ -447,7 +454,7 @@ export default function LandingPage() {
                   'התאמת שפה וסגנון מתקדמת',
                   'תמיכה מועדפת',
                 ],
-                cta: 'התחל עכשיו',
+                cta: 'בואו נתחיל',
                 popular: true,
               },
               {
@@ -492,8 +499,10 @@ export default function LandingPage() {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  href="/register"
+                <a
+                  href={WHATSAPP_CONTACT}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className={`block w-full text-center py-3.5 rounded-xl font-semibold transition-all duration-200 cursor-pointer ${
                     plan.popular
                       ? 'bg-[#25D366] text-white hover:bg-[#1eba58] shadow-[0_0_20px_rgba(37,211,102,0.25)] hover:shadow-[0_0_30px_rgba(37,211,102,0.4)]'
@@ -501,7 +510,7 @@ export default function LandingPage() {
                   }`}
                 >
                   {plan.cta}
-                </Link>
+                </a>
               </div>
             ))}
           </div>
@@ -525,13 +534,15 @@ export default function LandingPage() {
           <p className="text-white/40 text-lg mb-10 max-w-xl mx-auto">
             תוך 5 דקות הלקוחות שלך מקבלים מענה מיידי, תורים נקבעים, והיומן מתמלא. בלי שתרים אצבע.
           </p>
-          <Link
-            href="/register"
+          <a
+            href={WHATSAPP_CONTACT}
+            target="_blank"
+            rel="noopener noreferrer"
             className="group inline-flex items-center gap-2 px-10 py-5 bg-[#25D366] text-white text-xl font-bold rounded-2xl hover:bg-[#1eba58] transition-all duration-300 shadow-[0_0_40px_rgba(37,211,102,0.3)] hover:shadow-[0_0_60px_rgba(37,211,102,0.5)] hover:-translate-y-1 cursor-pointer"
           >
-            התחל בחינם עכשיו
+            דברו איתנו
             <ArrowLeft className="w-6 h-6 group-hover:-translate-x-1 transition-transform duration-200" />
-          </Link>
+          </a>
         </div>
       </section>
 
@@ -547,7 +558,7 @@ export default function LandingPage() {
             <Link href="/terms" className="hover:text-white/60 transition-colors duration-200 cursor-pointer">
               תנאי שימוש
             </Link>
-            <a href="mailto:info@workly.co.il" className="hover:text-white/60 transition-colors duration-200 cursor-pointer">
+            <a href="mailto:info@auto-crm.org" className="hover:text-white/60 transition-colors duration-200 cursor-pointer">
               צור קשר
             </a>
           </div>
