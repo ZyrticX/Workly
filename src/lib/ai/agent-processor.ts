@@ -755,114 +755,32 @@ ${stateResult.aiInstruction}
     }
   }
 
-  // 7. Safety net: AI said "booked" but didn't send action → AUTO-FIX
+  // 7. Safety net: AI said "booked" but didn't send action → notify owner
   const bookingKeywords = ['קבעתי', 'נקבע', 'אישרתי', 'התור שלך', 'מאושר']
   const textLower = parsed.text || ''
   const aiClaimedBooking = bookingKeywords.some(kw => textLower.includes(kw))
 
   if (aiClaimedBooking && !parsed.action) {
-    // First check if a booking was ALREADY saved by the action (avoid double-booking)
+    // Check if booking was already saved by the action
     const recentCheck = await supabase
       .from('appointments')
       .select('id')
       .eq('business_id', input.businessId)
       .eq('contact_id', input.contactId)
       .eq('status', 'confirmed')
-      .gte('created_at', new Date(Date.now() - 30000).toISOString()) // Last 30 seconds
+      .gte('created_at', new Date(Date.now() - 30000).toISOString())
       .limit(1)
 
-    if (recentCheck.data && recentCheck.data.length > 0) {
-      console.log('[agent] Booking already saved recently, skipping auto-fix.')
-    } else {
-    console.warn('[agent] AI claimed booking but sent no action! Attempting auto-fix...')
-
-    // Try to extract date, time, service from the AI text
-    const dateMatch = textLower.match(/(\d{4}-\d{2}-\d{2})|(\d{1,2}[./]\d{1,2}[./]?\d{0,4})/)
-    const timeMatch = textLower.match(/(\d{1,2}:\d{2})/)
-    const services = (settingsResult.data?.services as Array<{ name: string; duration: number; price: number }>) || []
-
-    // Find which service the AI mentioned
-    let matchedService = services.find(s => textLower.includes(s.name))
-    if (!matchedService && services.length === 1) matchedService = services[0]
-
-    if (timeMatch && matchedService) {
-      // Try to determine the date
-      let bookDate = ''
-      if (dateMatch) {
-        const raw = dateMatch[1] || dateMatch[2]
-        if (raw.includes('-')) {
-          bookDate = raw // Already YYYY-MM-DD
-        } else {
-          // Try DD/MM or DD.MM format
-          const parts = raw.split(/[./]/)
-          if (parts.length >= 2) {
-            const day = parts[0].padStart(2, '0')
-            const month = parts[1].padStart(2, '0')
-            const year = parts[2] || new Date().getFullYear().toString()
-            bookDate = `${year.length === 2 ? '20' + year : year}-${month}-${day}`
-          }
-        }
-      }
-
-      // If no date found, check for day names
-      if (!bookDate) {
-        const today = new Date()
-        const dayNames: Record<string, number> = { 'ראשון': 0, 'שני': 1, 'שלישי': 2, 'רביעי': 3, 'חמישי': 4, 'שישי': 5, 'שבת': 6 }
-        const hebrewDay = Object.keys(dayNames).find(d => textLower.includes(d))
-        if (hebrewDay) {
-          const targetDay = dayNames[hebrewDay]
-          const diff = (targetDay - today.getDay() + 7) % 7 || 7
-          const target = new Date(today)
-          target.setDate(today.getDate() + diff)
-          bookDate = target.toISOString().split('T')[0]
-        } else if (textLower.includes('מחר')) {
-          const tomorrow = new Date(today)
-          tomorrow.setDate(today.getDate() + 1)
-          bookDate = tomorrow.toISOString().split('T')[0]
-        } else if (textLower.includes('היום')) {
-          bookDate = today.toISOString().split('T')[0]
-        }
-      }
-
-      if (bookDate) {
-        // Auto-execute booking!
-        const autoAction = {
-          type: 'book_appointment',
-          params: { service: matchedService.name, date: bookDate, time: timeMatch[1] }
-        }
-        try {
-          await executeAction(autoAction, input, settingsResult.data)
-          console.log(`[agent] Auto-fix SUCCESS: booked ${matchedService.name} on ${bookDate} at ${timeMatch[1]}`)
-        } catch (autoErr) {
-          console.error('[agent] Auto-fix FAILED:', autoErr)
-          await supabase.from('notifications').insert({
-            business_id: input.businessId,
-            type: 'system',
-            title: '⚠️ תור לא נשמר',
-            body: `הסוכן אמר ללקוח ${input.contactName} שנקבע תור, אבל לא הצלחנו לשמור. בדוק ידנית.`,
-            metadata: { contact_id: input.contactId, conversation_id: input.conversationId, ai_text: parsed.text },
-          })
-        }
-      } else {
-        // Can't determine date
-        await supabase.from('notifications').insert({
-          business_id: input.businessId,
-          type: 'system',
-          title: '⚠️ תור לא נשמר',
-          body: `הסוכן אמר ללקוח ${input.contactName} שנקבע תור, אבל לא הצלחנו לזהות את התאריך. בדוק ידנית.`,
-          metadata: { contact_id: input.contactId, ai_text: parsed.text },
-        })
-      }
-    } else {
+    if (!recentCheck.data || recentCheck.data.length === 0) {
+      console.warn('[agent] AI claimed booking but sent no action — notifying owner')
       await supabase.from('notifications').insert({
         business_id: input.businessId,
         type: 'system',
         title: '⚠️ תור לא נשמר',
-        body: `הסוכן אמר ללקוח ${input.contactName} שנקבע תור, אבל חסרים פרטים (שעה/שירות). בדוק ידנית.`,
-        metadata: { contact_id: input.contactId, ai_text: parsed.text },
+        body: `הסוכן אמר ללקוח ${input.contactName} שנקבע תור, אבל לא שלח פעולת הזמנה. בדוק ידנית.`,
+        metadata: { contact_id: input.contactId, conversation_id: input.conversationId, ai_text: parsed.text },
       })
     }
-    } // end else (no recent booking)
   }
 
   // 8. Safety net: validate booking was actually saved

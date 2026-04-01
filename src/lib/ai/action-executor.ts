@@ -321,8 +321,6 @@ export async function executeAction(
             )
           }
 
-          // RPC already updates contact stats (total_visits + total_revenue)
-
           // Update contact status (new → returning → vip)
           try {
             const { updateContactStatus } = await import('@/lib/data/contacts-mutations')
@@ -502,18 +500,23 @@ export async function executeAction(
         const newStart = `${rParams.date}T${rParams.time}:00`
         const newEnd = addMinutesToTimeString(newStart, duration)
 
-        const { error: insertError } = await supabase.from('appointments').insert({
-          business_id: input.businessId,
-          contact_id: input.contactId,
-          service_type: serviceName,
-          start_time: newStart,
-          end_time: newEnd,
-          duration_minutes: duration,
-          price: service?.price || 0,
-          status: 'confirmed',
+        // Use atomic RPC to prevent race conditions (same as book_appointment)
+        const { error: insertError } = await supabase.rpc('book_appointment_atomic', {
+          p_business_id: input.businessId,
+          p_contact_id: input.contactId,
+          p_service_type: serviceName,
+          p_start_time: newStart,
+          p_end_time: newEnd,
+          p_duration_minutes: duration,
+          p_price: service?.price || 0,
+          p_contact_name: input.contactName || '',
+          p_notes: '',
         })
 
         if (insertError) {
+          if (insertError.message?.includes('TIME_SLOT_CONFLICT')) {
+            throw new ActionError('TIME_SLOT_CONFLICT', 'השעה הזו תפוסה. נסה שעה אחרת להזזת התור.')
+          }
           // Insert failed — DON'T cancel old appointment! Customer keeps their existing booking.
           throw new ActionError('DB_INSERT_ERROR', 'לא הצלחתי לקבוע תור חדש. התור הקיים שלך נשמר.')
         }
