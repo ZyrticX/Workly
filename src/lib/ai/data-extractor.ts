@@ -1,7 +1,27 @@
-import { generateResponse } from '@/lib/ai/ai-client'
+import { generateObject } from 'ai'
+import { openrouter } from '@openrouter/ai-sdk-provider'
+import { z } from 'zod'
 import type { ContactContext } from './context-builder'
 import type { BookingState, ExtractedData } from '@/lib/ai/booking-state'
 import { getIsraelNow, getIsraelToday, getIsraelTime, getIsraelDayOfWeek, formatDateISO } from '@/lib/utils/timezone'
+
+const AI_MODEL = process.env.AI_MODEL || 'google/gemini-2.5-flash'
+
+// ── Extraction Schema ────────────────────────────
+
+const ExtractionSchema = z.object({
+  intent: z.enum(['book', 'cancel', 'reschedule', 'check_availability', 'confirm', 'deny', 'provide_info', 'greeting', 'question', 'other']),
+  service: z.string().nullable().describe('Service name if mentioned'),
+  name: z.string().nullable().describe('Person name if mentioned'),
+  gender: z.enum(['male', 'female']).nullable().describe('Detected gender from name or speech patterns'),
+  date: z.string().nullable().describe('Date in YYYY-MM-DD format from lookup table'),
+  time: z.string().nullable().describe('Time in HH:MM 24h format'),
+  notes: z.string().nullable().describe('Any notes or comments'),
+  confirmation: z.boolean().nullable().describe('true for yes/confirm, false for no/cancel'),
+  for_other: z.boolean().default(false).describe('Whether booking is for someone else'),
+  other_name: z.string().nullable().describe('Name of the other person if for_other'),
+  other_relationship: z.string().nullable().describe('Relationship to other person'),
+})
 
 // ── Build Extraction Prompt ──────────────────────
 
@@ -42,8 +62,7 @@ function buildExtractionPrompt(
     }
   }
 
-  return `IMPORTANT: Respond ONLY in valid JSON. Extract information from the user's message.
-You are extracting data for a booking system for "${businessName}".
+  return `Extract information from the user's message for a booking system for "${businessName}".
 
 Available services: ${services.map(s => s.name).join(', ')}
 Current booking step: ${bookingState.step}
@@ -75,21 +94,6 @@ ${dayLookup.join('\n')}
 - Time must be in HH:MM format (24-hour). Examples: 09:00, 14:30, 17:00
 - If you can't determine the time, return null.
 - NEVER guess a time the customer didn't mention.
-
-Extract these fields:
-{
-  "intent": "book|cancel|reschedule|confirm|deny|provide_info|greeting|question|other",
-  "service": "service name if mentioned, or null",
-  "name": "person name if mentioned, or null",
-  "gender": "male|female|null",
-  "date": "YYYY-MM-DD from the lookup table above, or null",
-  "time": "HH:MM in 24h format, or null",
-  "notes": "any notes/comments, or null",
-  "confirmation": true/false/null,
-  "for_other": true/false,
-  "other_name": "name or null",
-  "other_relationship": "relationship or null"
-}
 
 Additional rules:
 - "כן"/"בטח"/"מאשר"/"יאללה"/"סבבה" → confirmation: true
@@ -151,6 +155,15 @@ function validateExtracted(extracted: ExtractedData, israelToday: string): Extra
   return extracted
 }
 
+// ── Helper: Convert conversation entries to SDK messages ──
+
+function toSDKMessages(history: Array<{ role: 'user' | 'model'; text: string }>) {
+  return history.map((entry) => ({
+    role: (entry.role === 'model' ? 'assistant' : entry.role) as 'user' | 'assistant',
+    content: entry.text,
+  }))
+}
+
 // ── Extract Data From Message ────────────────────
 
 export async function extractDataFromMessage(
@@ -163,21 +176,41 @@ export async function extractDataFromMessage(
 ): Promise<ExtractedData> {
   const prompt = buildExtractionPrompt(businessName, services, bookingState, contact)
 
-  const rawResponse = await generateResponse(
-    prompt,
-    conversationHistory.slice(-6),
-    message
-  )
-
-  let extracted: ExtractedData
   try {
-    const cleaned = rawResponse.replace(/```json\n?|```/g, '').trim()
-    extracted = JSON.parse(cleaned)
-    console.log(`[agent] Extracted: intent=${extracted.intent}, date=${extracted.date || '-'}, time=${extracted.time || '-'}, service=${extracted.service || '-'}, name=${extracted.name || '-'}`)
-  } catch {
-    console.warn(`[agent] Failed to parse AI extraction: "${rawResponse.substring(0, 100)}"`)
-    extracted = { intent: 'other' }
-  }
+    const { object: extracted } = await generateObject({
+      model: openrouter(AI_MODEL),
+      schema: ExtractionSchema,
+      system: prompt,
+      messages: [
+        ...toSDKMessages(conversationHistory.slice(-6)),
+        { role: 'user' as const, content: message },
+      ],
+      maxOutputTokens: 512,
+      temperature: 0.3,
+    })
 
-  return validateExtracted(extracted, getIsraelToday())
+    console.log(`[agent] Extracted: intent=${extracted.intent}, date=${extracted.date || '-'}, time=${extracted.time || '-'}, service=${extracted.service || '-'}, name=${extracted.name || '-'}`)
+
+    // Map nullable fields to optional for ExtractedData compatibility
+    const result: ExtractedData & Record<string, unknown> = {
+      intent: extracted.intent,
+      service: extracted.service || undefined,
+      name: extracted.name || undefined,
+      date: extracted.date || undefined,
+      time: extracted.time || undefined,
+      notes: extracted.notes || undefined,
+      confirmation: extracted.confirmation ?? undefined,
+    }
+
+    // Pass through extra fields for agent-processor
+    if (extracted.gender) result.gender = extracted.gender
+    if (extracted.for_other) result.for_other = true
+    if (extracted.other_name) result.other_name = extracted.other_name
+    if (extracted.other_relationship) result.other_relationship = extracted.other_relationship
+
+    return validateExtracted(result, getIsraelToday())
+  } catch (err) {
+    console.warn(`[agent] Structured extraction failed, falling back:`, err)
+    return { intent: 'other' }
+  }
 }
