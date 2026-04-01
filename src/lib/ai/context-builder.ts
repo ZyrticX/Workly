@@ -12,6 +12,7 @@ export interface ContactContext {
   visits: number
   gender: string | null
   memory: Record<string, unknown>
+  lastVisit: string | null
 }
 
 export interface AgentContext {
@@ -67,7 +68,7 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
         .limit(20),
       supabase
         .from('contacts')
-        .select('name, status, phone, total_visits, memory')
+        .select('name, status, phone, total_visits, memory, last_visit')
         .eq('id', input.contactId)
         .single(),
     ])
@@ -81,6 +82,7 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
     visits: (contactData.total_visits as number) || input.contactVisits || 0,
     gender: (contactData.gender as string | null) || null,
     memory: (contactData.memory as Record<string, unknown>) || {},
+    lastVisit: (contactData.last_visit as string | null) || null,
   } : {
     name: input.contactName,
     status: input.contactStatus || 'new',
@@ -88,6 +90,7 @@ export async function buildAgentContext(input: AgentInput): Promise<AgentContext
     visits: input.contactVisits || 0,
     gender: null,
     memory: {},
+    lastVisit: null,
   }
 
   // Load upcoming appointments for this contact + linked contacts

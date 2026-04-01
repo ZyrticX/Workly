@@ -1,6 +1,55 @@
 import { type BusinessPersonality, buildBusinessPersonality } from './personality'
 import type { AdvancedAIConfig } from './types'
 
+// ── Journey Stage Detection ─────────────────────
+
+type JourneyStage = 'first_time' | 'returning' | 'vip' | 'at_risk'
+
+function getJourneyStage(visits: number, lastVisit: string | null): JourneyStage {
+  if (visits <= 0) return 'first_time'
+  if (visits >= 10) {
+    // VIP can become at_risk if absent > 30 days
+    if (lastVisit) {
+      const daysSince = Math.floor((Date.now() - new Date(lastVisit).getTime()) / 86_400_000)
+      if (daysSince > 30) return 'at_risk'
+    }
+    return 'vip'
+  }
+  if (visits >= 3 && lastVisit) {
+    const daysSince = Math.floor((Date.now() - new Date(lastVisit).getTime()) / 86_400_000)
+    if (daysSince > 45) return 'at_risk'
+  }
+  return 'returning'
+}
+
+const JOURNEY_PROMPTS: Record<JourneyStage, string> = {
+  first_time: `### שלב מסע: לקוח/ה חדש/ה (פעם ראשונה!)
+- זו הפעם הראשונה! עשי רושם ראשוני מעולה
+- שלום חם ונעים, הציגי את עצמך בקצרה
+- הציגי בקצרה את השירותים הפופולריים
+- כשלומדים שם או מגדר — השתמשי ב-tool update_contact
+- **שאלי "איך קוראים לך?" ברגע הנוח הראשון**`,
+
+  returning: `### שלב מסע: לקוח/ה חוזר/ת
+- ברכי בחמימות! "מה קורה! שמחה לראות אותך שוב"
+- הראי שזוכרים — אל תשאלי שאלות שכבר יש עליהן תשובה
+- אם יש זיכרון אישי למעלה — השתמשי בו! "איך היה הטיפול האחרון?"
+- הציעי את אותו שירות או משהו חדש שיכול להתאים`,
+
+  vip: `### שלב מסע: VIP — לקוח/ה נאמנ/ה ❤️
+- יחס VIP מלא! "אהלן [שם]! כמה כיף לשמוע ממך"
+- תני עדיפות בזמנים, גמישות מיוחדת
+- הציעי שירותים פרימיום או חבילות
+- ציוני שאתם מעריכים את הנאמנות`,
+
+  at_risk: `### שלב מסע: לקוח/ה בסיכון — לא ביקר/ה זמן רב ⚠️
+- היי! עבר המון זמן! הראי שזכרת אותם
+- **אל תגידי "כבר הרבה זמן" או "לא ראינו אותך"** — פשוט תהיי חמה
+- הציעי הזדמנות לחזור: "יש לנו [שירות חדש/מבצע], חשבתי עליך"
+- תני הרגשה שמחכים להם`,
+}
+
+
 // ── System Prompt Builder ───────────────────────────────
 
 function formatWorkingHours(hours: Record<string, unknown> | null): string {
@@ -29,7 +78,7 @@ export function buildSystemPrompt(
   business: Record<string, unknown> | null,
   settings: Record<string, unknown> | null,
   persona: Record<string, unknown> | null,
-  contactContext?: { name: string; status: string; phone: string; visits: number; gender?: string | null; memory?: Record<string, unknown> },
+  contactContext?: { name: string; status: string; phone: string; visits: number; gender?: string | null; memory?: Record<string, unknown>; lastVisit?: string | null },
   advancedConfig?: AdvancedAIConfig | null,
   memoryContext?: { conversationSummary?: string | null; knowledgeContext?: string | null }
 ): string {
@@ -230,23 +279,14 @@ ${contactContext.name ? `**חשוב**: תמיד פנה ללקוח בשם שלו!
 **אסור לבקש מספר טלפון מהלקוח! הוא כבר מדבר איתנו בוואטסאפ. לעולם אל תבקש מספר, אל תגיד "אפשר מספר", אל תגיד "מספר ליצירת קשר" — אנחנו כבר בקשר דרך וואטסאפ.**
 ` : 'אין מידע על הלקוח'}
 
-## הוראות לפי סטטוס לקוח:
-${contactContext?.status === 'new' ? `
-### לקוח/ה חדש/ה - חשוב מאוד!
-- זו הפעם הראשונה שהלקוח/ה פונה. עשי רושם ראשוני מעולה!
-- הצטרפי שלום חם ונעים
-${!contactContext.name ? '- **השם לא ידוע!** שאלי "איך קוראים לך?" והשתמשי ב-tool update_contact עם השם' : `- השם ידוע: ${contactContext.name}`}
-- הצגי בקצרה את השירותים הפופולריים
-- כשאוספת מידע חדש (שם, מגדר) — השתמשי ב-tool update_contact
-` : contactContext?.status === 'returning' ? `
-### לקוח/ה חוזר/ת:
-- ברכי בחמימות "שמחה לראות אותך שוב!"
-- אל תשאלי שאלות שכבר יש לנו עליהן תשובות
-` : contactContext?.status === 'vip' ? `
-### לקוח/ה VIP:
-- תני יחס מועדף ואישי
-- הציעי עדיפות בזמני תורים
-` : ''}
+${(() => {
+  if (!contactContext) return ''
+  const stage = getJourneyStage(contactContext.visits, contactContext.lastVisit || null)
+  const nameNote = !contactContext.name
+    ? '\n- **השם לא ידוע!** שאלי "איך קוראים לך?" והשתמשי ב-tool update_contact עם השם'
+    : ''
+  return `## הוראות לפי שלב מסע לקוח:\n${JOURNEY_PROMPTS[stage]}${nameNote}`
+})()}
 
 ${(() => {
   // Tier 1: Contact memory
