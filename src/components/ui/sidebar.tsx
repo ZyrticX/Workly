@@ -14,6 +14,7 @@ import {
   Receipt,
   BarChart3,
   FileText,
+  Bug,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { NotificationsBell } from '@/components/ui/notifications-bell'
@@ -38,6 +39,7 @@ const secondaryNavItems: SidebarItem[] = [
   { label: 'הוצאות', href: '/expenses', icon: Receipt },
   { label: 'מדדים', href: '/kpis', icon: BarChart3 },
   { label: 'דוחות', href: '/reports', icon: FileText },
+  { label: 'סימולטור', href: '/simulator', icon: Bug },
   { label: 'הגדרות', href: '/settings', icon: Settings },
 ]
 
