@@ -5,7 +5,7 @@ import type { ContactContext } from './context-builder'
 import type { BookingState, ExtractedData } from '@/lib/ai/booking-state'
 import { getIsraelNow, getIsraelToday, getIsraelTime, getIsraelDayOfWeek, formatDateISO } from '@/lib/utils/timezone'
 
-const AI_MODEL = process.env.AI_MODEL || 'google/gemini-2.5-flash'
+const AI_MODEL = process.env.AI_MODEL || 'openai/gpt-4.1'
 
 // ── Extraction Schema ────────────────────────────
 

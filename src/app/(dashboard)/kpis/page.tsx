@@ -15,6 +15,9 @@ import {
   Plus,
   X,
   Wallet,
+  ChevronRight,
+  ChevronLeft,
+  Calendar,
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
@@ -26,7 +29,21 @@ interface KPIData {
   cancellationRate: number
   newClients: number
   utilization: number // percentage of booked hours vs available
+  revenueTrend: number | null // % change from previous month
 }
+
+interface MonthSummary {
+  totalAppts: number
+  completedAppts: number
+  cancelledAppts: number
+  avgRevenue: number
+  topService: string | null
+}
+
+const HEBREW_MONTHS = [
+  'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
+  'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר',
+]
 
 interface Goal {
   id: string
@@ -293,24 +310,46 @@ export default function KPIsPage() {
     cancellationRate: 0,
     newClients: 0,
     utilization: 0,
+    revenueTrend: null,
+  })
+  const [summary, setSummary] = useState<MonthSummary>({
+    totalAppts: 0, completedAppts: 0, cancelledAppts: 0, avgRevenue: 0, topService: null,
+  })
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date()
+    return { year: now.getFullYear(), month: now.getMonth() }
   })
   const [goals, setGoals] = useState<Goal[]>([])
   const [insights, setInsights] = useState<AIInsight[]>([])
   const [showGoalModal, setShowGoalModal] = useState(false)
   const [loadingInsights, setLoadingInsights] = useState(false)
 
+  const now = new Date()
+  const isCurrentMonth = selectedMonth.year === now.getFullYear() && selectedMonth.month === now.getMonth()
+
+  const goToPrevMonth = () => {
+    setSelectedMonth(prev => prev.month === 0
+      ? { year: prev.year - 1, month: 11 }
+      : { ...prev, month: prev.month - 1 })
+  }
+  const goToNextMonth = () => {
+    if (isCurrentMonth) return
+    setSelectedMonth(prev => prev.month === 11
+      ? { year: prev.year + 1, month: 0 }
+      : { ...prev, month: prev.month + 1 })
+  }
+
   // Load KPIs
   const loadKPIs = useCallback(async () => {
     if (!businessId) return
     setLoading(true)
 
-    const now = new Date()
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-    const startOfWeek = (() => {
-      const d = new Date()
-      d.setDate(d.getDate() - d.getDay())
-      return d.toISOString()
-    })()
+    const startOfMonth = new Date(selectedMonth.year, selectedMonth.month, 1).toISOString()
+    const endOfMonth = new Date(selectedMonth.year, selectedMonth.month + 1, 1).toISOString()
+    const prevStart = new Date(selectedMonth.year, selectedMonth.month - 1, 1).toISOString()
+    const prevEnd = startOfMonth
+    const startOfMonthDate = startOfMonth.split('T')[0]
+    const endOfMonthDate = endOfMonth.split('T')[0]
 
     try {
       const [
@@ -320,35 +359,41 @@ export default function KPIsPage() {
         newClientsResult,
         totalApptsResult,
         goalsResult,
+        prevRevenueResult,
+        serviceBreakdownResult,
       ] = await Promise.all([
-        // Revenue
+        // Revenue (selected month)
         supabase
           .from('appointments')
           .select('price')
           .eq('business_id', businessId)
           .eq('status', 'completed')
-          .gte('start_time', startOfMonth),
+          .gte('start_time', startOfMonth)
+          .lt('start_time', endOfMonth),
 
-        // Expenses
+        // Expenses (selected month)
         supabase
           .from('expenses')
           .select('amount')
           .eq('business_id', businessId)
-          .gte('expense_date', startOfMonth.split('T')[0]),
+          .gte('expense_date', startOfMonthDate)
+          .lt('expense_date', endOfMonthDate),
 
-        // All appointments this month (for cancellation rate)
+        // All appointments this month (for cancellation rate + summary)
         supabase
           .from('appointments')
           .select('status')
           .eq('business_id', businessId)
-          .gte('start_time', startOfMonth),
+          .gte('start_time', startOfMonth)
+          .lt('start_time', endOfMonth),
 
-        // New clients this week
+        // New clients this month
         supabase
           .from('contacts')
           .select('id', { count: 'exact' })
           .eq('business_id', businessId)
-          .gte('created_at', startOfWeek),
+          .gte('created_at', startOfMonth)
+          .lt('created_at', endOfMonth),
 
         // Total appointments this month (for utilization)
         supabase
@@ -356,7 +401,8 @@ export default function KPIsPage() {
           .select('duration_minutes')
           .eq('business_id', businessId)
           .neq('status', 'cancelled')
-          .gte('start_time', startOfMonth),
+          .gte('start_time', startOfMonth)
+          .lt('start_time', endOfMonth),
 
         // Goals
         supabase
@@ -364,16 +410,38 @@ export default function KPIsPage() {
           .select('*')
           .eq('business_id', businessId)
           .order('created_at', { ascending: false }),
+
+        // Previous month revenue (for trend)
+        supabase
+          .from('appointments')
+          .select('price')
+          .eq('business_id', businessId)
+          .eq('status', 'completed')
+          .gte('start_time', prevStart)
+          .lt('start_time', prevEnd),
+
+        // Service breakdown (for top service)
+        supabase
+          .from('appointments')
+          .select('service_type')
+          .eq('business_id', businessId)
+          .neq('status', 'cancelled')
+          .gte('start_time', startOfMonth)
+          .lt('start_time', endOfMonth),
       ])
 
       const revenue =
         revenueResult.data?.reduce((s, a) => s + (Number(a.price) || 0), 0) ?? 0
       const totalExpenses =
         expensesResult.data?.reduce((s, e) => s + (Number(e.amount) || 0), 0) ?? 0
+      const prevRevenue =
+        prevRevenueResult.data?.reduce((s, a) => s + (Number(a.price) || 0), 0) ?? 0
 
       const totalAppts = cancellationsResult.data?.length ?? 0
       const cancelledAppts =
         cancellationsResult.data?.filter((a) => a.status === 'cancelled').length ?? 0
+      const completedAppts =
+        cancellationsResult.data?.filter((a) => a.status === 'completed').length ?? 0
       const cancellationRate =
         totalAppts > 0 ? (cancelledAppts / totalAppts) * 100 : 0
 
@@ -383,11 +451,25 @@ export default function KPIsPage() {
           (s, a) => s + (Number(a.duration_minutes) || 0),
           0
         ) ?? 0
-      const availableMinutes = 8 * 60 * 22 // rough estimate
+      const availableMinutes = 8 * 60 * 22
       const utilization =
         availableMinutes > 0
           ? Math.min((bookedMinutes / availableMinutes) * 100, 100)
           : 0
+
+      // Revenue trend
+      const revenueTrend = prevRevenue > 0
+        ? Math.round(((revenue - prevRevenue) / prevRevenue) * 100)
+        : null
+
+      // Top service
+      const serviceCounts: Record<string, number> = {}
+      serviceBreakdownResult.data?.forEach(a => {
+        const svc = (a.service_type as string) || 'אחר'
+        serviceCounts[svc] = (serviceCounts[svc] || 0) + 1
+      })
+      const topService = Object.entries(serviceCounts)
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || null
 
       setKpis({
         monthRevenue: revenue,
@@ -395,6 +477,15 @@ export default function KPIsPage() {
         cancellationRate,
         newClients: newClientsResult.count ?? 0,
         utilization,
+        revenueTrend,
+      })
+
+      setSummary({
+        totalAppts,
+        completedAppts,
+        cancelledAppts,
+        avgRevenue: completedAppts > 0 ? Math.round(revenue / completedAppts) : 0,
+        topService,
       })
 
       // Map goals with current values
@@ -435,7 +526,7 @@ export default function KPIsPage() {
     }
 
     setLoading(false)
-  }, [businessId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [businessId, selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadKPIs()
@@ -529,15 +620,32 @@ export default function KPIsPage() {
             </svg>
             חזרה
           </a>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-primary)]/10">
-              <BarChart3 className="h-5 w-5 text-[var(--color-primary)]" />
-            </div>
-            <div>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-primary)]/10">
+                <BarChart3 className="h-5 w-5 text-[var(--color-primary)]" />
+              </div>
               <h1 className="text-lg font-bold text-gray-900">מדדים ויעדים</h1>
-              <p className="text-xs text-gray-500">
-                נתוני החודש הנוכחי
-              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={goToPrevMonth}
+                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <ChevronRight className="h-4 w-4 text-gray-500" />
+              </button>
+              <span className="text-sm font-medium text-gray-700 min-w-[100px] text-center">
+                {HEBREW_MONTHS[selectedMonth.month]} {selectedMonth.year}
+              </span>
+              <button
+                type="button"
+                onClick={goToNextMonth}
+                disabled={isCurrentMonth}
+                className="flex h-9 w-9 items-center justify-center rounded-lg hover:bg-gray-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                <ChevronLeft className="h-4 w-4 text-gray-500" />
+              </button>
             </div>
           </div>
         </div>
@@ -553,6 +661,7 @@ export default function KPIsPage() {
               value={formatCurrency(kpis.monthRevenue)}
               icon={TrendingUp}
               color="bg-green-100 text-green-600"
+              trend={kpis.revenueTrend !== null ? { value: kpis.revenueTrend, positive: kpis.revenueTrend >= 0 } : undefined}
             />
             <MetricCard
               label="רווח נקי"
@@ -592,6 +701,40 @@ export default function KPIsPage() {
                 color="bg-purple-100 text-purple-600"
               />
             </div>
+          </div>
+        </section>
+
+        {/* Monthly Summary */}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-500 mb-3">
+            <Calendar className="inline h-4 w-4 ms-1" />
+            סיכום {HEBREW_MONTHS[selectedMonth.month]}
+          </h2>
+          <div className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div>
+                <p className="text-xl font-bold text-gray-900">{summary.totalAppts}</p>
+                <p className="text-[11px] text-gray-500">סה״כ תורים</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-green-600">{summary.completedAppts}</p>
+                <p className="text-[11px] text-gray-500">הושלמו</p>
+              </div>
+              <div>
+                <p className="text-xl font-bold text-red-500">{summary.cancelledAppts}</p>
+                <p className="text-[11px] text-gray-500">בוטלו</p>
+              </div>
+            </div>
+            <div className="border-t border-gray-100 pt-3 flex items-center justify-between text-sm">
+              <span className="text-gray-500">ממוצע לתור</span>
+              <span className="font-semibold text-gray-800">{formatCurrency(summary.avgRevenue)}</span>
+            </div>
+            {summary.topService && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-gray-500">שירות מוביל</span>
+                <span className="font-semibold text-gray-800">{summary.topService}</span>
+              </div>
+            )}
           </div>
         </section>
 

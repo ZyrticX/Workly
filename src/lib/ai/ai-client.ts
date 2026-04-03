@@ -7,7 +7,7 @@ import { generateText, tool } from 'ai'
 import { openrouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 
-const AI_MODEL = process.env.AI_MODEL || 'google/gemini-2.5-flash'
+const AI_MODEL = process.env.AI_MODEL || 'openai/gpt-4.1'
 
 // ── Circuit Breaker ─────────────────────────────────
 // Tracks consecutive failures and short-circuits when unhealthy.
@@ -191,7 +191,7 @@ export async function generateVisionResponse(
   }
 
   try {
-    const visionModel = process.env.AI_VISION_MODEL || 'google/gemini-2.5-flash-preview'
+    const visionModel = process.env.AI_VISION_MODEL || 'openai/gpt-4.1'
 
     const imageParts = images.map((img) => ({
       type: 'image' as const,

@@ -381,7 +381,25 @@ ${stateResult.aiInstruction}
       input.message
     )
 
+    // B5: Log AI raw response for debugging
+    console.log(`[agent] AI response (guided):`, {
+      hasText: !!toolResponse.text,
+      textLength: toolResponse.text?.length || 0,
+      toolCalls: toolResponse.toolCalls.map(tc => tc.toolName),
+      conversationId: input.conversationId,
+    })
+
     let cleanText = cleanAIResponse(toolResponse.text || '')
+
+    // B2: Fallback for completely empty AI response
+    if (!cleanText && toolResponse.toolCalls.length === 0) {
+      console.error('[agent] AI returned empty response (no text, no tool calls)', {
+        conversationId: input.conversationId,
+        message: input.message.slice(0, 80),
+        rawText: toolResponse.text,
+      })
+      cleanText = 'שנייה, בודק ואחזור אליך 🙏'
+    }
 
     // Action comes ONLY from state machine — AI cannot book/cancel/reschedule
     const action = stateResult.action
@@ -389,11 +407,19 @@ ${stateResult.aiInstruction}
     // Process AI tool calls: only update_contact and escalate are allowed
     const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc))
     let escalated = false
+    let updateContactExecuted = false
 
     for (const tc of allToolActions) {
       if (tc.type === 'update_contact') {
+        // B1: Guard against update_contact loop — max 1 per turn, skip if name already set
+        const hasGenderUpdate = !!(tc.params as Record<string, unknown>).gender
+        if (updateContactExecuted || (!contactNameIsPlaceholder && !hasGenderUpdate)) {
+          console.log(`[agent] Skipping duplicate update_contact (already executed: ${updateContactExecuted}, name set: ${contactCtx.name})`)
+          continue
+        }
         try {
           await executeAction(tc, input, settingsResult.data)
+          updateContactExecuted = true
           console.log(`[agent] Side-effect tool call executed: update_contact`)
         } catch (sideErr) {
           console.warn(`[agent] update_contact failed (non-critical): ${sideErr}`)
@@ -434,7 +460,25 @@ ${stateResult.aiInstruction}
       input.message
     )
 
+    // B5: Log AI raw response for debugging
+    console.log(`[agent] AI response (free):`, {
+      hasText: !!toolResponse.text,
+      textLength: toolResponse.text?.length || 0,
+      toolCalls: toolResponse.toolCalls.map(tc => tc.toolName),
+      conversationId: input.conversationId,
+    })
+
     let cleanText = cleanAIResponse(toolResponse.text || '')
+
+    // B2: Fallback for completely empty AI response
+    if (!cleanText && toolResponse.toolCalls.length === 0) {
+      console.error('[agent] AI returned empty response (no text, no tool calls)', {
+        conversationId: input.conversationId,
+        message: input.message.slice(0, 80),
+        rawText: toolResponse.text,
+      })
+      cleanText = 'שנייה, בודק ואחזור אליך 🙏'
+    }
 
     // Action comes ONLY from state machine — AI cannot book/cancel/reschedule
     const action = stateResult.action
@@ -442,11 +486,19 @@ ${stateResult.aiInstruction}
     // Process AI tool calls: only update_contact and escalate are allowed
     const allToolActions = toolResponse.toolCalls.map(tc => toolCallToAction(tc))
     let escalated = false
+    let updateContactExecuted = false
 
     for (const tc of allToolActions) {
       if (tc.type === 'update_contact') {
+        // B1: Guard against update_contact loop — max 1 per turn, skip if name already set
+        const hasGenderUpdate = !!(tc.params as Record<string, unknown>).gender
+        if (updateContactExecuted || (!contactNameIsPlaceholder && !hasGenderUpdate)) {
+          console.log(`[agent] Skipping duplicate update_contact (already executed: ${updateContactExecuted}, name set: ${contactCtx.name})`)
+          continue
+        }
         try {
           await executeAction(tc, input, settingsResult.data)
+          updateContactExecuted = true
           console.log(`[agent] Side-effect tool call executed: update_contact`)
         } catch (sideErr) {
           console.warn(`[agent] update_contact failed (non-critical): ${sideErr}`)
@@ -534,6 +586,9 @@ ${stateResult.aiInstruction}
       } else {
         if (parsed.text === '__BOOKING_PENDING__') {
           parsed.text = ERROR_MESSAGES.DB_INSERT_ERROR
+        } else if (parsed.action?.type === 'reschedule_appointment') {
+          // B4: Reschedule failed — override any success text the AI generated
+          parsed.text = 'מצטער, לא הצלחתי להזיז את התור. נסה שוב בבקשה.'
         }
         // Notify business owner about other failures
         await supabase.from('notifications').insert({
@@ -609,6 +664,35 @@ ${stateResult.aiInstruction}
           title: '⚠️ תור לא נמצא במערכת',
           body: `הסוכן ניסה לקבוע תור ל${input.contactName} ב-${params.date} ${params.time} אבל התור לא נמצא ב-DB. בדוק ידנית.`,
           metadata: { contact_id: input.contactId, params },
+        })
+      }
+    }
+  }
+
+  // 8b. B3: Safety net: validate reschedule was actually saved
+  if (parsed.action?.type === 'reschedule_appointment') {
+    const rParams = parsed.action.params as { date?: string; time?: string }
+    if (rParams.date && rParams.time) {
+      const checkTime = `${rParams.date}T${rParams.time}`
+      const { data: saved } = await supabase
+        .from('appointments')
+        .select('id')
+        .eq('business_id', input.businessId)
+        .eq('contact_id', input.contactId)
+        .in('status', ['confirmed', 'pending'])
+        .gte('start_time', checkTime + ':00')
+        .lte('start_time', checkTime + ':59')
+        .limit(1)
+
+      if (!saved || saved.length === 0) {
+        console.error('[agent] Reschedule action executed but new appointment not found in DB!')
+        parsed.text = 'מצטער, הייתה תקלה בהזזת התור. נסה שוב בבקשה.'
+        await supabase.from('notifications').insert({
+          business_id: input.businessId,
+          type: 'system',
+          title: '⚠️ הזזת תור נכשלה',
+          body: `הסוכן ניסה להזיז תור ל${input.contactName} ב-${rParams.date} ${rParams.time} אבל התור החדש לא נמצא ב-DB.`,
+          metadata: { contact_id: input.contactId, params: rParams },
         })
       }
     }
